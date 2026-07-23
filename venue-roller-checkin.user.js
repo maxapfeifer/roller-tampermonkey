@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Venue — ROLLER Check-in Cards + Member Photos
 // @namespace    venue.roller.checkin-cards
-// @version      5.34
+// @version      5.35
 // @description  Reformats the ROLLER POS booking check-in list into full-frame photo cards, surfaces member photos on load (no Verify click), alerts when a member has no photo, handles family memberships (best-effort photos + add-name prompt) and close/similar name matches.
 // @match        https://pos.roller.app/*
 // @run-at       document-start
@@ -625,30 +625,30 @@
       (CFG.SHOW_SHIELD ? 'app-bip-summary:not(.rcz-skip) .summary__wrapper button[id^="check-in-button"].theme--secondary mat-icon{display:none !important;}' : ''),
       (CFG.SHOW_SHIELD ? '.rcz-shieldtxt{position:absolute !important;inset:0 !important;z-index:1 !important;display:none;flex-direction:column !important;align-items:center !important;justify-content:center !important;padding-bottom:6px !important;color:#fff !important;pointer-events:none !important;text-align:center !important;}' : ''),
       (CFG.SHOW_SHIELD ? 'app-bip-summary:not(.rcz-skip) button[id^="check-in-button"].theme--secondary .rcz-shieldtxt{display:flex !important;}' : ''),
-      (CFG.SHOW_SHIELD ? '.rcz-shieldtxt__id{font:400 12px/1 -apple-system,Segoe UI,Roboto,sans-serif !important;letter-spacing:.02em !important;}' : ''),
-      (CFG.SHOW_SHIELD ? '.rcz-shieldtxt__sub{font:400 22px/1 -apple-system,Segoe UI,Roboto,sans-serif !important;letter-spacing:0 !important;margin-top:2px !important;}' : ''),
+      (CFG.SHOW_SHIELD ? '.rcz-shieldtxt__id{font:400 12px/1 Roboto,Arial,sans-serif !important;letter-spacing:.02em !important;}' : ''),
+      (CFG.SHOW_SHIELD ? '.rcz-shieldtxt__sub{font:400 22px/1 Roboto,Arial,sans-serif !important;letter-spacing:0 !important;margin-top:2px !important;}' : ''),
       (CFG.SHOW_SHIELD ? 'app-bip-summary:not(.rcz-skip) .summary__wrapper button[id^="check-in-button"].theme--success mat-icon{color:#fff !important;margin-bottom:6px !important;}' : ''),
 
       /* ALERT (member with no photo) — fills the whole card and dominates; icon hidden */
       '.rcz-alert{position:absolute !important;inset:0 !important;display:flex !important;flex-direction:column !important;align-items:center !important;justify-content:center !important;text-align:center !important;color:#e5231b !important;z-index:5 !important;pointer-events:none !important;padding:16px 18px 78px !important;gap:12px !important;}',
-      '.rcz-alert__hd{font:900 48px/1 -apple-system,Segoe UI,Roboto,sans-serif !important;letter-spacing:.02em !important;}',
-      '.rcz-alert__body{font:400 18px/1.32 -apple-system,Segoe UI,Roboto,sans-serif !important;}',
+      '.rcz-alert__hd{font:900 48px/1 Roboto,Arial,sans-serif !important;letter-spacing:.02em !important;}',
+      '.rcz-alert__body{font:400 18px/1.32 Roboto,Arial,sans-serif !important;}',
       'app-bip-summary:not(.rcz-skip) .summary__wrapper.rcz-alert-on button[id^="booking-details-button"] mat-icon{display:none !important;}',
       /* CASUAL (non-member) — calm grey, same card-filling layout; icon hidden */
       '.rcz-casual{position:absolute !important;left:12px !important;bottom:12px !important;z-index:6 !important;pointer-events:none !important;}',
-      '.rcz-casual__tag{font:700 12.5px/1.2 -apple-system,Segoe UI,Roboto,sans-serif !important;color:#565d66 !important;}',
+      '.rcz-casual__tag{font:700 12.5px/1.2 Roboto,Arial,sans-serif !important;color:#565d66 !important;}',
       /* big near-black NAME, then the ticket TYPE, then the small grey casual sub-line */
-      '.rcz-casual__name{font:900 48px/1.02 -apple-system,Segoe UI,Roboto,sans-serif !important;color:#111827 !important;letter-spacing:.01em !important;}',
+      '.rcz-casual__name{font:900 48px/1.02 Roboto,Arial,sans-serif !important;color:#111827 !important;letter-spacing:.01em !important;}',
       // genuine "no name on file" placeholder: same name font, softened to grey so it reads as a system note,
       // not a person literally called "No name provided".
       '.rcz-casual__name--none{color:#9aa3af !important;letter-spacing:normal !important;}',
-      '.rcz-casual__type{font:700 22px/1.3 -apple-system,Segoe UI,Roboto,sans-serif !important;color:#1f2933 !important;margin-top:6px !important;}',
-      '.rcz-casual__sub{font:400 15px/1.3 -apple-system,Segoe UI,Roboto,sans-serif !important;color:#6b7280 !important;margin-top:9px !important;}',
+      '.rcz-casual__type{font:700 22px/1.3 Roboto,Arial,sans-serif !important;color:#1f2933 !important;margin-top:6px !important;}',
+      '.rcz-casual__sub{font:400 15px/1.3 Roboto,Arial,sans-serif !important;color:#6b7280 !important;margin-top:9px !important;}',
       'app-bip-summary:not(.rcz-skip) .summary__wrapper.rcz-casual-on button[id^="booking-details-button"] mat-icon{display:none !important;}',
       /* MISMATCH (member, ticket name != membership name) — red, card-filling; icon hidden */
       '.rcz-mismatch{position:absolute !important;inset:0 !important;display:flex !important;flex-direction:column !important;align-items:center !important;justify-content:center !important;text-align:center !important;color:#e5231b !important;z-index:5 !important;pointer-events:none !important;padding:16px 20px 78px !important;gap:14px !important;}',
-      '.rcz-mismatch__hd{font:900 48px/1 -apple-system,Segoe UI,Roboto,sans-serif !important;letter-spacing:.02em !important;}',
-      '.rcz-mismatch__note{font:400 18px/1.32 -apple-system,Segoe UI,Roboto,sans-serif !important;margin-top:10px !important;max-width:94% !important;}',
+      '.rcz-mismatch__hd{font:900 48px/1 Roboto,Arial,sans-serif !important;letter-spacing:.02em !important;}',
+      '.rcz-mismatch__note{font:400 18px/1.32 Roboto,Arial,sans-serif !important;margin-top:10px !important;max-width:94% !important;}',
       '.rcz-mismatch__note b{font-weight:400 !important;}',
       /* member photo behind the mismatch text -> keep the FACE clearly visible; the warning is only a light
          semi-transparent reminder (a soft white wash + reduced opacity) so staff still see to verify the name */
@@ -656,16 +656,16 @@
       'app-bip-summary:not(.rcz-skip) .summary__wrapper.rcz-mismatch-on button[id^="booking-details-button"] mat-icon{display:none !important;}',
       /* VISITING (member from another museum, no photo) — red, card-filling; icon hidden */
       '.rcz-visiting{position:absolute !important;inset:0 !important;display:flex !important;flex-direction:column !important;align-items:center !important;justify-content:center !important;text-align:center !important;color:#e5231b !important;z-index:5 !important;pointer-events:none !important;padding:16px 18px 78px !important;gap:10px !important;}',
-      '.rcz-visiting__hd{font:900 48px/1 -apple-system,Segoe UI,Roboto,sans-serif !important;letter-spacing:.02em !important;}',
-      '.rcz-visiting__body{font:400 18px/1.32 -apple-system,Segoe UI,Roboto,sans-serif !important;}',
-      '.rcz-visiting__note{margin-top:2px !important;background:#e5231b !important;color:#fff !important;padding:8px 14px !important;border-radius:9px !important;font:400 15px/1.25 -apple-system,Segoe UI,Roboto,sans-serif !important;letter-spacing:.03em !important;max-width:94% !important;box-shadow:0 2px 8px rgba(0,0,0,.28) !important;}',
+      '.rcz-visiting__hd{font:900 48px/1 Roboto,Arial,sans-serif !important;letter-spacing:.02em !important;}',
+      '.rcz-visiting__body{font:400 18px/1.32 Roboto,Arial,sans-serif !important;}',
+      '.rcz-visiting__note{margin-top:2px !important;background:#e5231b !important;color:#fff !important;padding:8px 14px !important;border-radius:9px !important;font:400 15px/1.25 Roboto,Arial,sans-serif !important;letter-spacing:.03em !important;max-width:94% !important;box-shadow:0 2px 8px rgba(0,0,0,.28) !important;}',
       'app-bip-summary:not(.rcz-skip) .summary__wrapper.rcz-visiting-on button[id^="booking-details-button"] mat-icon{display:none !important;}',
       /* MEMBERSHIP TIER badge — small pill low over the photo */
       /* membership tag, bottom-LEFT: two lines ("Membership" over the tier), dark border. */
       /* min-height 66px so the tag matches the name label + shield heights (Tom\'s "similar heights" mock) */
       '.rcz-badge{position:absolute !important;left:12px !important;right:auto !important;bottom:12px !important;z-index:6 !important;display:flex !important;flex-direction:column !important;align-items:flex-start !important;justify-content:center !important;gap:1px !important;min-height:66px !important;box-sizing:border-box !important;padding:7px 14px 8px !important;border-radius:12px !important;border:2px solid #16162a !important;white-space:nowrap !important;text-align:left !important;box-shadow:0 2px 8px rgba(0,0,0,.35) !important;pointer-events:none !important;}',
-      '.rcz-badge__lbl{font:700 15px/1.25 -apple-system,Segoe UI,Roboto,sans-serif !important;letter-spacing:.01em !important;}',
-      '.rcz-badge__tier{font:900 22px/1.1 -apple-system,Segoe UI,Roboto,sans-serif !important;}',
+      '.rcz-badge__lbl{font:700 15px/1.25 Roboto,Arial,sans-serif !important;letter-spacing:.01em !important;}',
+      '.rcz-badge__tier{font:900 22px/1.1 Roboto,Arial,sans-serif !important;}',
       '.rcz-badge--gold{background:#f5b301 !important;color:#17171f !important;}',
       '.rcz-badge--wonder{background:#c2138a !important;color:#fff !important;}',
       /* link variant: base badge is pointer-events:none, so re-enable clicks + show it is tappable */
@@ -676,38 +676,38 @@
          Sits across the top with a dark scrim; left padding clears the checkbox. */
       /* uniform left indent clears the checkbox (top-left over the card) so EVERY line — including */
       /* ones below the checkbox — sits on the same left axis, rather than wrapping around it. */
-      '.rcz-note{position:absolute !important;top:0 !important;left:0 !important;right:0 !important;z-index:5 !important;pointer-events:none !important;background:rgba(17,20,24,.82) !important;color:#fff !important;padding:12px 16px 13px 68px !important;text-align:left !important;font:400 11px/1.32 -apple-system,Segoe UI,Roboto,sans-serif !important;}',
+      '.rcz-note{position:absolute !important;top:0 !important;left:0 !important;right:0 !important;z-index:5 !important;pointer-events:none !important;background:rgba(17,20,24,.82) !important;color:#fff !important;padding:12px 16px 13px 68px !important;text-align:left !important;font:400 11px/1.32 Roboto,Arial,sans-serif !important;}',
       '.rcz-note b{font-weight:400 !important;}',
       '.rcz-note--important b:first-child{color:#ffd23d !important;}',
-      '.rcz-note__title{display:block !important;font:600 11px/1.25 -apple-system,Segoe UI,Roboto,sans-serif !important;letter-spacing:.04em !important;margin-bottom:4px !important;}',
-      '.rcz-note__body{font:400 11px/1.34 -apple-system,Segoe UI,Roboto,sans-serif !important;}',
+      '.rcz-note__title{display:block !important;font:600 11px/1.25 Roboto,Arial,sans-serif !important;letter-spacing:.04em !important;margin-bottom:4px !important;}',
+      '.rcz-note__body{font:400 11px/1.34 Roboto,Arial,sans-serif !important;}',
       '.rcz-note--similar .rcz-note__title{color:#7fd4ff !important;}',
       '.rcz-note--paid .rcz-note__title{color:#57d977 !important;}',
       /* BIRTHDAY flag — cake + month, top-right of the card, clear of the tick/alerts/checkbox */
       /* top set inline (default 12px) so it can be pushed below a top note banner when one is present */
       '.rcz-bday{position:absolute !important;right:12px !important;z-index:7 !important;display:flex !important;flex-direction:column !important;align-items:center !important;gap:0 !important;pointer-events:none !important;background:rgba(255,255,255,.93) !important;border-radius:13px !important;padding:6px 10px 5px !important;box-shadow:0 2px 8px rgba(0,0,0,.3) !important;}',
       '.rcz-bday__cake{font-size:36px !important;line-height:1 !important;display:inline-block !important;transform-origin:50% 90% !important;animation:rczCake 1.8s ease-in-out infinite !important;}',
-      '.rcz-bday__m{font:900 13px/1.1 -apple-system,Segoe UI,Roboto,sans-serif !important;color:#b4308f !important;letter-spacing:.03em !important;margin-top:2px !important;}',
+      '.rcz-bday__m{font:900 13px/1.1 Roboto,Arial,sans-serif !important;color:#b4308f !important;letter-spacing:.03em !important;margin-top:2px !important;}',
       '@keyframes rczCake{0%,100%{transform:translateY(0) rotate(0)}20%{transform:translateY(-3px) rotate(-9deg)}45%{transform:translateY(0) rotate(0)}70%{transform:translateY(-2px) rotate(9deg)}}',
       /* opacity intentionally NOT !important — an !important value cannot be animated, which would */
       /* freeze the confetti invisible; the keyframe drives opacity from 0 up and back to 0. */
       '.rcz-bday__c{position:absolute !important;top:14px !important;left:50% !important;width:7px !important;height:7px !important;border-radius:1px !important;opacity:0;pointer-events:none !important;animation:rczConfetti 2.6s ease-out infinite !important;}',
       '@keyframes rczConfetti{0%{opacity:0;transform:translate(-50%,0) scale(.3) rotate(0)}10%{opacity:1}80%{opacity:1}100%{opacity:0;transform:translate(calc(-50% + var(--dx)),var(--dy)) scale(1) rotate(var(--r))}}',
       /* NAME MEANING — small italic line under the guest name in the bottom-left label */
-      '.rcz-meaning{display:block !important;font:italic 500 13px/1.25 -apple-system,Segoe UI,Roboto,sans-serif !important;color:#8a94a3 !important;margin-top:2px !important;}',
+      '.rcz-meaning{display:block !important;font:italic 500 13px/1.25 Roboto,Arial,sans-serif !important;color:#8a94a3 !important;margin-top:2px !important;}',
       /* ---- MEMBERSHIP card (photo fill + "Membership Found" panel). ROLLER's own label is hidden; we
              draw our own name label + info panel + tier tag. Placed last so the hide rule wins. ---- */
       'app-bip-summary.rcz-mem .summary__wrapper .summary-detail{display:none !important;}',
       'app-bip-summary.rcz-mem .summary__wrapper .summary-detail-time{display:none !important;}',
       '.rcz-mem-info{position:absolute !important;top:12px !important;left:64px !important;right:12px !important;z-index:5 !important;pointer-events:none !important;background:rgba(255,255,255,.9) !important;border-radius:12px !important;padding:9px 13px 10px !important;box-shadow:0 1px 4px rgba(0,0,0,.2) !important;}',
-      '.rcz-mem-info__hd{font:900 22px/1.15 -apple-system,Segoe UI,Roboto,sans-serif !important;color:#111827 !important;margin-bottom:3px !important;}',
-      '.rcz-mem-info__row{font:700 15px/1.45 -apple-system,Segoe UI,Roboto,sans-serif !important;color:#374151 !important;}',
+      '.rcz-mem-info__hd{font:900 22px/1.15 Roboto,Arial,sans-serif !important;color:#111827 !important;margin-bottom:3px !important;}',
+      '.rcz-mem-info__row{font:700 15px/1.45 Roboto,Arial,sans-serif !important;color:#374151 !important;}',
       '.rcz-mem-info__row b{font-weight:900 !important;color:#111827 !important;}',
       '.rcz-mem-name{position:absolute !important;right:92px !important;bottom:12px !important;z-index:6 !important;display:flex !important;flex-direction:column !important;justify-content:center !important;min-height:66px !important;box-sizing:border-box !important;white-space:nowrap !important;background:#fff !important;border:1px solid #ececec !important;border-radius:12px !important;padding:7px 12px !important;box-shadow:0 2px 8px rgba(0,0,0,.35) !important;}',
       '.rcz-mem-name__cat{font-size:15px !important;font-weight:700 !important;color:#6b7280 !important;}',
       '.rcz-mem-name__nm{font-size:22px !important;font-weight:900 !important;color:#1f2933 !important;line-height:1.1 !important;margin-top:1px !important;}',
       /* STATUS BAND — Name:/Photo: readout across the top of the tile (grey = fine, red = needs action) */
-      '.rcz-status{position:absolute !important;top:0 !important;left:0 !important;right:0 !important;z-index:6 !important;pointer-events:none !important;background:rgba(255,255,255,.55) !important;-webkit-backdrop-filter:blur(6px) !important;backdrop-filter:blur(6px) !important;border-bottom:1px solid rgba(0,0,0,.07) !important;padding:7px 11px !important;font:400 12.5px/1.3 -apple-system,Segoe UI,Roboto,sans-serif !important;color:#1f2933 !important;}',
+      '.rcz-status{position:absolute !important;top:0 !important;left:0 !important;right:0 !important;z-index:6 !important;pointer-events:none !important;background:rgba(255,255,255,.55) !important;-webkit-backdrop-filter:blur(6px) !important;backdrop-filter:blur(6px) !important;border-bottom:1px solid rgba(0,0,0,.07) !important;padding:7px 11px !important;font:400 12.5px/1.3 Roboto,Arial,sans-serif !important;color:#1f2933 !important;}',
       '.rcz-status__row{display:flex !important;gap:4px !important;}',
       '.rcz-status__lbl{color:#7b828c !important;}',
       '.rcz-status__ok{color:#8b929b !important;}',
@@ -719,9 +719,9 @@
       'app-bip-summary:not(.rcz-skip) .summary__wrapper.rcz-locked button[id^="check-in-button"]{pointer-events:none !important;opacity:.34 !important;filter:grayscale(.7) !important;}',
       /* ACTION REQUIRED prompt — frosted banner with tappable links */
       '.rcz-actreq{position:absolute !important;left:12px !important;right:12px !important;bottom:88px !important;z-index:6 !important;pointer-events:none !important;background:rgba(255,255,255,.86) !important;-webkit-backdrop-filter:blur(4px) !important;backdrop-filter:blur(4px) !important;border-radius:11px !important;padding:9px 12px 10px !important;box-shadow:0 2px 9px rgba(0,0,0,.17) !important;text-align:center !important;}',
-      '.rcz-actreq__hd{font:800 13px/1.1 -apple-system,Segoe UI,Roboto,sans-serif !important;letter-spacing:.05em !important;color:#e5231b !important;}',
+      '.rcz-actreq__hd{font:800 13px/1.1 Roboto,Arial,sans-serif !important;letter-spacing:.05em !important;color:#e5231b !important;}',
       '.rcz-actreq__links{display:flex !important;gap:16px !important;justify-content:center !important;margin-top:5px !important;flex-wrap:wrap !important;}',
-      '.rcz-actreq a,.rcz-addlink{color:#2f6fed !important;text-decoration:underline !important;text-underline-offset:2px !important;pointer-events:auto !important;cursor:pointer !important;font:700 12.5px/1 -apple-system,Segoe UI,Roboto,sans-serif !important;}',
+      '.rcz-actreq a,.rcz-addlink{color:#2f6fed !important;text-decoration:underline !important;text-underline-offset:2px !important;pointer-events:auto !important;cursor:pointer !important;font:700 12.5px/1 Roboto,Arial,sans-serif !important;}',
       '.rcz-addlink{font-size:16px !important;margin-left:8px !important;}'
     ].join('\n');
     document.head.appendChild(s);
