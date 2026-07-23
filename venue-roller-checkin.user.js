@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Venue — ROLLER Check-in Cards + Member Photos
 // @namespace    venue.roller.checkin-cards
-// @version      5.23
+// @version      5.24
 // @description  Reformats the ROLLER POS booking check-in list into full-frame photo cards, surfaces member photos on load (no Verify click), alerts when a member has no photo, handles family memberships (best-effort photos + add-name prompt) and close/similar name matches.
 // @match        https://pos.roller.app/*
 // @run-at       document-start
@@ -311,6 +311,13 @@
           // family slot with NO individual identity (blank, or the account-holder name repeated across
           // slots) -> show photo best-effort (positional) and prompt to add the individual's name.
           next[cardId] = { member: true, pending: true, photo: null, family: true, tier: tier };
+          toFetch.push({ cardId: cardId, r: d.r, b: d.b });
+        } else if (!fnT) {
+          // ticket has NO holder name (e.g. a walk-up / door sale where the attendee's name was never
+          // captured). With no name to compare we can't assert a mismatch — show the member's photo
+          // best-effort as a clean member card. (If a name later turns up and doesn't match the membership,
+          // the pill-name guard at render still flags it.)
+          next[cardId] = { member: true, pending: true, photo: null, tier: tier };
           toFetch.push({ cardId: cardId, r: d.r, b: d.b });
         } else {
           // ticket name != membership name -> name-mismatch. Covers both a single membership AND a
