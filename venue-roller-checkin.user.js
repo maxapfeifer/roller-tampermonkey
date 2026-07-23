@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Venue — ROLLER Check-in Cards + Member Photos
 // @namespace    venue.roller.checkin-cards
-// @version      5.27
+// @version      5.28
 // @description  Reformats the ROLLER POS booking check-in list into full-frame photo cards, surfaces member photos on load (no Verify click), alerts when a member has no photo, handles family memberships (best-effort photos + add-name prompt) and close/similar name matches.
 // @match        https://pos.roller.app/*
 // @run-at       document-start
@@ -1110,6 +1110,24 @@
     for (var i = 0; i < pills.length; i++) { if (pills[i].getAttribute('href') === href) { pills[i].click(); return true; } }
     return false;
   }
+  // After we forward to a membership because a photo is REQUIRED, land staff straight on the "Guest" tab
+  // (that's where the "Click to take a photo" control lives) instead of the default "Membership" tab. The
+  // membership detail renders async after the soft nav, so poll for ROLLER's Guest tab (a stable id) and
+  // click it once it's present + wired. Stop as soon as it's selected (so we never fight a manual switch),
+  // or after a short timeout if it never appears. Tabs: Guest = bip-detail-tab-customer, Membership = ...-ticket.
+  function openGuestTabSoon() {
+    var start = Date.now();
+    var iv = setInterval(function () {
+      try {
+        var g = document.getElementById('bip-detail-tab-customer');
+        if (g) {
+          if (g.getAttribute('aria-selected') === 'true') { clearInterval(iv); return; } // done
+          g.click();
+        }
+        if (Date.now() - start > 5000) clearInterval(iv); // give up after ~5s
+      } catch (e) { clearInterval(iv); }
+    }, 120);
+  }
   function installBadgeLinkNav() {
     if (window.__rczBadgeNav) return; window.__rczBadgeNav = true;
     document.addEventListener('click', function (ev) {
@@ -1121,7 +1139,11 @@
         if (badge) {
           if (badge.getAttribute('target') === '_blank') return;
           var href = badge.getAttribute('href');
-          if (href && forwardToPill(href)) { ev.preventDefault(); return; }
+          // if this card is currently in the "photo required" state, land on the Guest (photo) tab too —
+          // but NOT for members who already have a photo (no alert), where the Membership tab is expected.
+          var bhost = badge.closest ? badge.closest('app-bip-summary') : null;
+          var bAlert = bhost ? bhost.querySelector('.rcz-alert[data-rcz-href]') : null;
+          if (href && forwardToPill(href)) { ev.preventDefault(); if (bAlert) openGuestTabSoon(); return; }
           var host = badge.closest ? badge.closest('app-bip-summary') : null;
           var tile = host ? host.querySelector('button[id^="booking-details-button-"]') : null;
           if (tile) { ev.preventDefault(); tile.click(); }
@@ -1140,7 +1162,7 @@
             // handler still fires on the bubble phase and routes to the ticket, overriding our membership
             // nav (the "correctly links through, then breaks on the way" symptom). stopImmediatePropagation
             // in this capture-phase listener kills the event before the native tile handler ever sees it.
-            if (ah && forwardToPill(ah)) { ev.preventDefault(); ev.stopImmediatePropagation(); return; }
+            if (ah && forwardToPill(ah)) { ev.preventDefault(); ev.stopImmediatePropagation(); openGuestTabSoon(); return; }
           }
         }
       } catch (e) {}
