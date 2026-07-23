@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Venue — ROLLER Check-in Cards + Member Photos
 // @namespace    venue.roller.checkin-cards
-// @version      5.19
+// @version      5.20
 // @description  Reformats the ROLLER POS booking check-in list into full-frame photo cards, surfaces member photos on load (no Verify click), alerts when a member has no photo, handles family memberships (best-effort photos + add-name prompt) and close/similar name matches.
 // @match        https://pos.roller.app/*
 // @run-at       document-start
@@ -281,6 +281,7 @@
             tier: src ? ((src.pct === 100) ? 'gold' : 'wonder') : null,
             memberName: src ? proper(firstName(src.raw)) : '', memberFull: src ? (src.raw || '') : '',
             ticketName: proper(firstName(p.name)) };
+          if (src && src.r != null) toFetch.push({ cardId: cardId, r: src.r, b: src.b }); // pull the member's photo to show behind the mismatch
           return;
         }
         // The "member" field with no letters (null / blank / an ID number) = member visiting from another museum.
@@ -315,6 +316,7 @@
           // family slot that IS individually named but this ticket isn't that person (someone using
           // another member's pass, e.g. Chris checking in on Michelle's slot).
           next[cardId] = { member: true, mismatch: true, pending: false, photo: null, tier: tier, memberName: proper(fnM), ticketName: proper(fnT) };
+          toFetch.push({ cardId: cardId, r: d.r, b: d.b }); // pull the member's photo to show behind the mismatch
         }
         // Full membership name (same source ROLLER prints on the blue discount link) — used to look up
         // that member's detail URL and turn the tier tag into a link. d is guaranteed set here.
@@ -565,6 +567,8 @@
       '.rcz-mismatch__hd{font:900 48px/1 -apple-system,Segoe UI,Roboto,sans-serif !important;letter-spacing:.02em !important;}',
       '.rcz-mismatch__note{font:400 18px/1.32 -apple-system,Segoe UI,Roboto,sans-serif !important;margin-top:10px !important;max-width:94% !important;}',
       '.rcz-mismatch__note b{font-weight:400 !important;}',
+      /* member photo shown behind the mismatch text -> a translucent white veil keeps the red legible while the face stays visible */
+      '.rcz-mismatch--onphoto{background:rgba(255,255,255,.5) !important;}',
       'app-bip-summary:not(.rcz-skip) .summary__wrapper.rcz-mismatch-on button[id^="booking-details-button"] mat-icon{display:none !important;}',
       /* VISITING (member from another museum, no photo) — red, card-filling; icon hidden */
       '.rcz-visiting{position:absolute !important;inset:0 !important;display:flex !important;flex-direction:column !important;align-items:center !important;justify-content:center !important;text-align:center !important;color:#e5231b !important;z-index:5 !important;pointer-events:none !important;padding:16px 18px 78px !important;gap:10px !important;}',
@@ -652,10 +656,13 @@
     if (c.getAttribute('data-h') !== html) { c.innerHTML = html; c.setAttribute('data-h', html); }
   }
   function clrCasual(w) { w.classList.remove('rcz-casual-on'); var c = w.querySelector('.rcz-casual'); if (c) c.remove(); }
-  function addMismatch(w, noteHtml) {
+  function addMismatch(w, noteHtml, onPhoto) {
     w.classList.add('rcz-mismatch-on');
     var m = w.querySelector('.rcz-mismatch');
     if (!m) { m = document.createElement('div'); m.className = 'rcz-mismatch'; w.appendChild(m); }
+    // when the member's photo sits behind the text, add a translucent veil so the red stays readable
+    var cls = 'rcz-mismatch' + (onPhoto ? ' rcz-mismatch--onphoto' : '');
+    if (m.className !== cls) m.className = cls;
     // non-breaking hyphen so "MIS-MATCH" stays whole and the title wraps as "NAME" / "MIS-MATCH"
     var title = String(CFG.MISMATCH_LINES[0]).replace(/-/g, '‑');
     var html = '<div class="rcz-mismatch__hd">' + title + '</div>' +
@@ -893,12 +900,19 @@
           addCasual(w, xnm, xcat); clrAlert(w); clrMismatch(w); clrVisiting(w); clrBadge(w);
           addNote(w, 'misaligned');
         } else if (info && info.mismatch) {
-          // member ticket whose name doesn't match its membership -> name-mismatch alert (dynamic note)
-          if (img) img.remove();
+          // member ticket whose name doesn't match its membership -> name-mismatch alert (dynamic note).
+          // If we've fetched the membership holder's photo, show it BEHIND the text so staff can compare
+          // the face to the person in front of them (e.g. is this "Teddy" actually the member "Theodore"?).
+          if (info.photo) {
+            if (icon) icon.style.display = 'none';
+            if (!img) { img = document.createElement('img'); img.className = 'rcz-photo'; img.alt = ''; btn.appendChild(img); }
+            var mmurl = CFG.CDN + info.photo;
+            if (img.getAttribute('src') !== mmurl) img.setAttribute('src', mmurl);
+          } else if (img) { img.remove(); }
           var mem = '<b>' + esc((info.memberName || 'another member').toUpperCase()) + '</b>';
           var tk = esc(info.ticketName || 'this guest');
           var note = esc(CFG.MISMATCH_NOTE_TMPL).split('{MEMBER}').join(mem).split('{TICKET}').join(tk);
-          addMismatch(w, note); clrAlert(w); clrCasual(w); clrVisiting(w); clrNote(w); if (info.tier) addBadge(w, info.tier, memHref(info)); else clrBadge(w);
+          addMismatch(w, note, !!info.photo); clrAlert(w); clrCasual(w); clrVisiting(w); clrNote(w); if (info.tier) addBadge(w, info.tier, memHref(info)); else clrBadge(w);
         } else if (info && !info.pending && info.visiting) {
           // member visiting from another museum, no photo -> "photo essential" alert
           if (img) img.remove();
