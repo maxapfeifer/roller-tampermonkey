@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Venue — ROLLER Check-in Cards + Member Photos
 // @namespace    venue.roller.checkin-cards
-// @version      5.33
+// @version      5.34
 // @description  Reformats the ROLLER POS booking check-in list into full-frame photo cards, surfaces member photos on load (no Verify click), alerts when a member has no photo, handles family memberships (best-effort photos + add-name prompt) and close/similar name matches.
 // @match        https://pos.roller.app/*
 // @run-at       document-start
@@ -714,7 +714,15 @@
       '.rcz-status__warn{color:#e5231b !important;}',
       /* top overlays sit clear of the status band */
       'app-bip-summary:not(.rcz-skip) .summary__wrapper.rcz-alert-on .rcz-alert,app-bip-summary:not(.rcz-skip) .summary__wrapper.rcz-mismatch-on .rcz-mismatch{padding-top:52px !important;}',
-      '.rcz-note{top:47px !important;}'
+      '.rcz-note{top:47px !important;}',
+      /* LOCKED shield — dim + block the check-in button until staff action a prompt */
+      'app-bip-summary:not(.rcz-skip) .summary__wrapper.rcz-locked button[id^="check-in-button"]{pointer-events:none !important;opacity:.34 !important;filter:grayscale(.7) !important;}',
+      /* ACTION REQUIRED prompt — frosted banner with tappable links */
+      '.rcz-actreq{position:absolute !important;left:12px !important;right:12px !important;bottom:88px !important;z-index:6 !important;pointer-events:none !important;background:rgba(255,255,255,.86) !important;-webkit-backdrop-filter:blur(4px) !important;backdrop-filter:blur(4px) !important;border-radius:11px !important;padding:9px 12px 10px !important;box-shadow:0 2px 9px rgba(0,0,0,.17) !important;text-align:center !important;}',
+      '.rcz-actreq__hd{font:800 13px/1.1 -apple-system,Segoe UI,Roboto,sans-serif !important;letter-spacing:.05em !important;color:#e5231b !important;}',
+      '.rcz-actreq__links{display:flex !important;gap:16px !important;justify-content:center !important;margin-top:5px !important;flex-wrap:wrap !important;}',
+      '.rcz-actreq a,.rcz-addlink{color:#2f6fed !important;text-decoration:underline !important;text-underline-offset:2px !important;pointer-events:auto !important;cursor:pointer !important;font:700 12.5px/1 -apple-system,Segoe UI,Roboto,sans-serif !important;}',
+      '.rcz-addlink{font-size:16px !important;margin-left:8px !important;}'
     ].join('\n');
     document.head.appendChild(s);
   }
@@ -726,15 +734,14 @@
       if (p.textContent.trim() !== sh) p.textContent = sh;
     });
   }
-  function addAlert(w, href) {
+  function addAlert(w, href, cardId) {
     w.classList.add('rcz-alert-on');
     var a = w.querySelector('.rcz-alert');
-    if (!a) {
-      a = document.createElement('div'); a.className = 'rcz-alert';
-      a.innerHTML = '<div class="rcz-alert__hd">' + CFG.ALERT_LINES[0] + '</div>' +
-                    '<div class="rcz-alert__body">' + CFG.ALERT_LINES[1] + '</div>';
-      w.appendChild(a);
-    }
+    if (!a) { a = document.createElement('div'); a.className = 'rcz-alert'; w.appendChild(a); }
+    var html = '<div class="rcz-alert__hd">' + CFG.ALERT_LINES[0] +
+               (href ? ' <a class="rcz-addlink" href="#" data-rcz-unlock="' + esc(cardId) + '" data-rcz-href="' + esc(href) + '">Add</a>' : '') + '</div>' +
+               '<div class="rcz-alert__body">' + CFG.ALERT_LINES[1] + '</div>';
+    if (a.getAttribute('data-h') !== html) { a.innerHTML = html; a.setAttribute('data-h', html); }
     // clicking the alert box goes to this member's membership detail (NOT the ticket-holder tile behind it)
     if (href) a.setAttribute('data-rcz-href', href); else a.removeAttribute('data-rcz-href');
   }
@@ -897,9 +904,9 @@
     return proper((t.split(/person|current|expired/i)[0] || '').trim().split(/\s+/)[0] || '');
   }
   // add the family / close-match / mis-assigned note to a member photo card (shared by both photo paths)
-  function memberNote(w, info) {
-    if (info.family) addNote(w, 'important');
-    else if (info.closematch) addNote(w, 'similar', info.memberName, info.ticketName);
+  function memberNote(w, info, cardId) {
+    if (info.family) { addActionReq(w, cardId, [{ label: 'Add individual names', href: memHref(info) }]); clrNote(w); }
+    else if (info.closematch) { addActionReq(w, cardId, [{ label: 'Add a ticket' }, { label: 'Pass nickname' }]); clrNote(w); }
     else if (info.paidMember) addNote(w, 'paidmember', firstNameOnCard(w), ticketTypeOfPart(info.recipPart));
     else clrNote(w);
   }
@@ -967,6 +974,26 @@
     if (info.member)                               return { nm: 'Matched', nmW: false, ph: hasPhoto ? 'Showing' : 'Required Today', phW: !hasPhoto };
     return null;
   }
+  // Does this card need a staff action before check-in (so we lock the shield)? Fail-safe: false when unsure.
+  function needsAction(w, info) {
+    if (!info || info.pending) return false;
+    var hasPhoto = !!w.querySelector('img.rcz-photo');
+    if (info.mismatch || info.family || info.closematch) return true;               // name / names / close
+    if (info.member && !info.misaligned && !info.paidMember && !hasPhoto) return true; // member, no photo
+    return false;
+  }
+  // ACTION REQUIRED prompt — a frosted banner of tappable links. Each link unlocks this card's shield;
+  // a link with href also forwards to that member's tab (add photo / add name) via ROLLER's blue pill.
+  function addActionReq(w, cardId, actions) {
+    var el = w.querySelector('.rcz-actreq');
+    if (!el) { el = document.createElement('div'); el.className = 'rcz-actreq'; w.appendChild(el); }
+    var links = actions.map(function (a) {
+      return '<a href="#" data-rcz-unlock="' + cardId + '"' + (a.href ? ' data-rcz-href="' + esc(a.href) + '"' : '') + '>' + esc(a.label) + '</a>';
+    }).join('');
+    var html = '<div class="rcz-actreq__hd">ACTION REQUIRED:</div><div class="rcz-actreq__links">' + links + '</div>';
+    if (el.getAttribute('data-h') !== html) { el.innerHTML = html; el.setAttribute('data-h', html); }
+  }
+  function clrActionReq(w) { var el = w.querySelector('.rcz-actreq'); if (el) el.remove(); }
   // ---- membership card treatment (photo fill + "Membership Found" panel) ----
   function renderMembership(w, host) {
     var btn = w.querySelector('button[id^="booking-details-button-"]');
@@ -1020,8 +1047,8 @@
       if (!activeRoute()) {
         // not the booking check-in list -> strip our styling/overlays so ROLLER's native pages work
         var st = document.getElementById('rcz-style'); if (st) st.remove();
-        document.querySelectorAll('.rcz-alert, .rcz-casual, .rcz-mismatch, .rcz-visiting, .rcz-badge, .rcz-note, .rcz-bday, .rcz-meaning, .rcz-status, .rcz-mem-info, .rcz-mem-name, img.rcz-photo').forEach(function (e) { e.remove(); });
-        document.querySelectorAll('.rcz-alert-on, .rcz-casual-on, .rcz-mismatch-on, .rcz-visiting-on').forEach(function (w) { w.classList.remove('rcz-alert-on', 'rcz-casual-on', 'rcz-mismatch-on', 'rcz-visiting-on'); });
+        document.querySelectorAll('.rcz-alert, .rcz-casual, .rcz-mismatch, .rcz-visiting, .rcz-badge, .rcz-note, .rcz-bday, .rcz-meaning, .rcz-status, .rcz-actreq, .rcz-mem-info, .rcz-mem-name, img.rcz-photo').forEach(function (e) { e.remove(); });
+        document.querySelectorAll('.rcz-alert-on, .rcz-casual-on, .rcz-mismatch-on, .rcz-visiting-on, .rcz-locked').forEach(function (w) { w.classList.remove('rcz-alert-on', 'rcz-casual-on', 'rcz-mismatch-on', 'rcz-visiting-on', 'rcz-locked'); });
         document.querySelectorAll('app-bip-summary.rcz-mem, app-bip-summary.rcz-skip').forEach(function (h) { h.classList.remove('rcz-mem', 'rcz-skip'); });
         document.querySelectorAll('app-bip-summary:not(.rcz-skip) button[id^="booking-details-button-"] mat-icon').forEach(function (ic) { ic.style.display = ''; });
         return;
@@ -1037,6 +1064,7 @@
         var btn = w.querySelector('button[id^="booking-details-button-"]'); if (!btn) return;
         var cardId = btn.id.replace('booking-details-button-', '');
         var info = state.byCard[cardId];
+        clrActionReq(w);
         var icon = btn.querySelector('mat-icon');
         var img = btn.querySelector('img.rcz-photo');
         if (info && !info.pending && info.photo) {
@@ -1054,7 +1082,7 @@
             clrAlert(w); clrCasual(w); clrMismatch(w); clrVisiting(w);
             // photo cards can carry a prompt: family -> "add name"; close name -> "confirm"; paid member ->
             // "discount mis-assigned, total still correct"
-            memberNote(w, info);
+            memberNote(w, info, cardId);
           }
         } else if (info && info.misaligned) {
           // discount was mis-assigned to this non-member guest, but the booking total is correct. Don't
@@ -1078,12 +1106,12 @@
           var mem = '<b>' + esc((info.memberName || 'another member').toUpperCase()) + '</b>';
           var tk = esc(info.ticketName || 'this guest');
           var note = esc(CFG.MISMATCH_NOTE_TMPL).split('{MEMBER}').join(mem).split('{TICKET}').join(tk);
-          addMismatch(w, note, !!info.photo); clrAlert(w); clrCasual(w); clrVisiting(w); clrNote(w); if (info.tier) addBadge(w, info.tier, memHref(info)); else clrBadge(w);
+          clrMismatch(w); addActionReq(w, cardId, [{ label: 'Add a ticket' }, { label: 'Pass nickname' }]); clrAlert(w); clrCasual(w); clrVisiting(w); clrNote(w); if (info.tier) addBadge(w, info.tier, memHref(info)); else clrBadge(w);
         } else if (info && !info.pending && info.visiting) {
           // visiting overlay dropped from the redesign — a visiting member with no photo is treated
           // like any other no-photo member (standard "requires photo" alert), no "visiting" banner.
           if (img) img.remove();
-          addAlert(w, memHref(info)); clrCasual(w); clrMismatch(w); clrVisiting(w); clrNote(w); if (info.tier) addBadge(w, info.tier, memHref(info)); else clrBadge(w);
+          addAlert(w, memHref(info), cardId); clrCasual(w); clrMismatch(w); clrVisiting(w); clrNote(w); if (info.tier) addBadge(w, info.tier, memHref(info)); else clrBadge(w);
         } else if (info && !info.pending && info.member) {
           var np = nativePhotoImg(btn);
           if (np) {
@@ -1100,12 +1128,12 @@
             } else {
               addBadge(w, info.tier, memHref(info));
               clrAlert(w); clrCasual(w); clrMismatch(w); clrVisiting(w);
-              memberNote(w, info);
+              memberNote(w, info, cardId);
             }
           } else {
             // matched member, genuinely no photo on file -> "requires photo" alert
             if (img) img.remove();
-            addAlert(w, memHref(info)); clrCasual(w); clrMismatch(w); clrVisiting(w); clrNote(w); if (info.tier) addBadge(w, info.tier, memHref(info)); else clrBadge(w);
+            addAlert(w, memHref(info), cardId); clrCasual(w); clrMismatch(w); clrVisiting(w); clrNote(w); if (info.tier) addBadge(w, info.tier, memHref(info)); else clrBadge(w);
           }
         } else if (info && !info.pending && info.member === false) {
           // casual (non-member) -> big guest name heading + "Casual <type> Booking" + sub-line
@@ -1122,6 +1150,8 @@
         // --- status band + prototype extras, independent of the card state above ---
         var si = statusInfo(w, info);
         if (si) paintStatus(w, si.nm, si.nmW, si.ph, si.phW); else clrStatus(w);
+        if (!state.unlocked) state.unlocked = {};
+        w.classList.toggle('rcz-locked', needsAction(w, info) && !state.unlocked[cardId]);
         var bm = state.birthdays[cardId];
         if (CFG.SHOW_BIRTHDAY && bm && birthdayInWindow(bm)) {
           addBirthday(w, bm);
@@ -1177,6 +1207,20 @@
       try {
         if (ev.defaultPrevented) return;
         if (ev.button !== 0 || ev.metaKey || ev.ctrlKey || ev.shiftKey || ev.altKey) return; // let new-tab etc. through
+        // ACTION-REQUIRED / "Add" links: unlock this card's shield (and, if the link carries an href,
+        // forward to the member's tab so staff can add the photo/name) — nothing else.
+        var unl = ev.target && ev.target.closest ? ev.target.closest('[data-rcz-unlock]') : null;
+        if (unl) {
+          ev.preventDefault(); ev.stopImmediatePropagation();
+          var uid = unl.getAttribute('data-rcz-unlock');
+          if (!state.unlocked) state.unlocked = {};
+          if (uid) state.unlocked[uid] = true;
+          var uhost = unl.closest ? unl.closest('.summary__wrapper') : null;
+          if (uhost) uhost.classList.remove('rcz-locked');
+          var uhref = unl.getAttribute('data-rcz-href');
+          if (uhref) forwardToPill(uhref);
+          return;
+        }
         // A) the tier badge link -> membership detail, else fall back to the card's tile
         var badge = ev.target && ev.target.closest ? ev.target.closest('a.rcz-badge--link') : null;
         if (badge) {
