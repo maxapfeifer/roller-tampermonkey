@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Venue — ROLLER Check-in Cards + Member Photos
 // @namespace    venue.roller.checkin-cards
-// @version      5.35
+// @version      5.36
 // @description  Reformats the ROLLER POS booking check-in list into full-frame photo cards, surfaces member photos on load (no Verify click), alerts when a member has no photo, handles family memberships (best-effort photos + add-name prompt) and close/similar name matches.
 // @match        https://pos.roller.app/*
 // @run-at       document-start
@@ -663,11 +663,10 @@
       /* MEMBERSHIP TIER badge — small pill low over the photo */
       /* membership tag, bottom-LEFT: two lines ("Membership" over the tier), dark border. */
       /* min-height 66px so the tag matches the name label + shield heights (Tom\'s "similar heights" mock) */
-      '.rcz-badge{position:absolute !important;left:12px !important;right:auto !important;bottom:12px !important;z-index:6 !important;display:flex !important;flex-direction:column !important;align-items:flex-start !important;justify-content:center !important;gap:1px !important;min-height:66px !important;box-sizing:border-box !important;padding:7px 14px 8px !important;border-radius:12px !important;border:2px solid #16162a !important;white-space:nowrap !important;text-align:left !important;box-shadow:0 2px 8px rgba(0,0,0,.35) !important;pointer-events:none !important;}',
-      '.rcz-badge__lbl{font:700 15px/1.25 Roboto,Arial,sans-serif !important;letter-spacing:.01em !important;}',
-      '.rcz-badge__tier{font:900 22px/1.1 Roboto,Arial,sans-serif !important;}',
-      '.rcz-badge--gold{background:#f5b301 !important;color:#17171f !important;}',
-      '.rcz-badge--wonder{background:#c2138a !important;color:#fff !important;}',
+      '.rcz-badge{position:absolute !important;left:12px !important;right:auto !important;bottom:12px !important;z-index:6 !important;display:flex !important;flex-direction:column !important;align-items:flex-start !important;justify-content:flex-end !important;gap:0 !important;white-space:nowrap !important;text-align:left !important;pointer-events:none !important;background:none !important;border:none !important;box-shadow:none !important;padding:0 !important;}',
+      '.rcz-badge__tier{font:700 14px/1.22 Roboto,Arial,sans-serif !important;color:#2f6fed !important;}',
+      '.rcz-badge__lbl{font:700 14px/1.22 Roboto,Arial,sans-serif !important;color:#2f6fed !important;}',
+      '.rcz-badge--gold .rcz-badge__tier,.rcz-badge--gold .rcz-badge__lbl,.rcz-badge--wonder .rcz-badge__tier,.rcz-badge--wonder .rcz-badge__lbl{color:#2f6fed !important;}',
       /* link variant: base badge is pointer-events:none, so re-enable clicks + show it is tappable */
       '.rcz-badge--link{pointer-events:auto !important;cursor:pointer !important;text-decoration:none !important;transition:filter .1s,box-shadow .1s !important;}',
       '.rcz-badge--link:hover{filter:brightness(1.07) !important;box-shadow:0 3px 13px rgba(0,0,0,.45) !important;text-decoration:none !important;}',
@@ -926,7 +925,7 @@
       if (CFG.MEM_LINK_NEWTAB) { b.setAttribute('target', '_blank'); b.setAttribute('rel', 'noopener'); }
       else { b.removeAttribute('target'); b.removeAttribute('rel'); }
     } else if (b.hasAttribute('href')) { b.removeAttribute('href'); b.removeAttribute('target'); b.removeAttribute('rel'); }
-    var html = '<span class="rcz-badge__lbl">' + esc(CFG.TIER_LABEL) + '</span><span class="rcz-badge__tier">' + esc(gold ? CFG.TIER_GOLD : CFG.TIER_WONDER) + '</span>';
+    var html = '<span class="rcz-badge__tier">' + esc(gold ? CFG.TIER_GOLD : CFG.TIER_WONDER) + '</span><span class="rcz-badge__lbl">Member</span>';
     if (b.getAttribute('data-h') !== html) { b.innerHTML = html; b.setAttribute('data-h', html); }
   }
   function clrBadge(w) { var b = w.querySelector('.rcz-badge'); if (b) b.remove(); }
