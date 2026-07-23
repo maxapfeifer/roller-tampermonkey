@@ -1,0 +1,430 @@
+<title>Check-in Tiles — New Format Mockups</title>
+<style>
+  :root{
+    /* page chrome */
+    --bg:#eceef1; --surface:#ffffff; --ink:#1f2933; --muted:#6b7280;
+    --hair:#dde1e6; --eyebrow:#3a6ea5; --chip:#eef1f5; --chip-ink:#48505a;
+    /* tile skin (fixed — this is the product look, same in both themes) */
+    --t-card:#f4f5f7; --t-none:#e6e8eb; --t-ink:#1f2933; --t-muted:#7b828c;
+    --t-red:#e5231b; --t-blue:#2f6fed; --t-mag:#b4308f; --t-amber:#e0a316;
+    --t-dark:#1f2429; --t-band:#ffffff; --t-hair:#e3e6ea;
+    --font:-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  }
+  @media (prefers-color-scheme:dark){
+    :root{ --bg:#14171b; --surface:#1b2026; --ink:#e6e9ec; --muted:#98a1ac;
+      --hair:#2a2f37; --eyebrow:#7fb0e6; --chip:#252b33; --chip-ink:#aab3bd; }
+  }
+  :root[data-theme="light"]{ --bg:#eceef1; --surface:#ffffff; --ink:#1f2933; --muted:#6b7280;
+    --hair:#dde1e6; --eyebrow:#3a6ea5; --chip:#eef1f5; --chip-ink:#48505a; }
+  :root[data-theme="dark"]{ --bg:#14171b; --surface:#1b2026; --ink:#e6e9ec; --muted:#98a1ac;
+    --hair:#2a2f37; --eyebrow:#7fb0e6; --chip:#252b33; --chip-ink:#aab3bd; }
+
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font);
+    line-height:1.5;-webkit-font-smoothing:antialiased;}
+  .wrap{max-width:1180px;margin:0 auto;padding:40px 24px 80px;}
+
+  header.top{margin-bottom:8px}
+  .eyebrow{font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--eyebrow);font-weight:700;margin:0 0 8px}
+  h1{font-size:30px;line-height:1.15;margin:0 0 10px;text-wrap:balance;letter-spacing:-.01em}
+  .lede{max-width:64ch;color:var(--muted);margin:0 0 22px}
+
+  .rules{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 30px;padding:0;list-style:none}
+  .rules li{font-size:12.5px;background:var(--surface);border:1px solid var(--hair);
+    border-radius:999px;padding:5px 12px;color:var(--muted)}
+  .rules li b{color:var(--ink);font-weight:600}
+
+  section{margin-top:38px}
+  .sec-head{display:flex;align-items:baseline;gap:12px;border-bottom:1px solid var(--hair);
+    padding-bottom:10px;margin-bottom:22px}
+  .sec-head h2{font-size:15px;letter-spacing:.03em;text-transform:uppercase;margin:0}
+  .sec-head span{font-size:13px;color:var(--muted)}
+
+  .grid{display:grid;gap:26px 22px;grid-template-columns:repeat(auto-fill,minmax(240px,1fr))}
+
+  figure{margin:0;display:flex;flex-direction:column;gap:10px}
+  figcaption{font-size:12.5px;color:var(--muted)}
+  .cap-row{display:flex;align-items:center;gap:8px;margin-bottom:3px;flex-wrap:wrap}
+  .num{font-weight:800;font-size:13px;color:var(--ink);font-variant-numeric:tabular-nums}
+  .klass{font:600 11px/1 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    background:var(--chip);color:var(--chip-ink);border-radius:5px;padding:4px 6px}
+  figcaption .desc{color:var(--ink)}
+
+  /* ---------------- TILE ---------------- */
+  .tile{position:relative;aspect-ratio:5/6;border-radius:14px;overflow:hidden;
+    background:var(--t-card);box-shadow:0 1px 3px rgba(0,0,0,.16),0 6px 18px rgba(0,0,0,.06);
+    font-family:var(--font);color:var(--t-ink);display:flex;flex-direction:column;isolation:isolate}
+
+  /* photo / placeholder fill */
+  .fill{position:absolute;inset:0;z-index:0}
+  .fill.photo{background:
+      radial-gradient(120% 90% at 30% 18%,#ffd3e2 0%,#f7b7cf 34%,#c98ba6 66%,#7d5b74 100%);}
+  .fill.photo::after{content:"";position:absolute;inset:0;
+    background:
+      radial-gradient(38% 30% at 50% 40%,rgba(60,40,50,.34),transparent 60%),
+      url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="120" height="150" viewBox="0 0 120 150"><g fill="rgba(40,25,35,.30)"><circle cx="60" cy="58" r="30"/><path d="M18 150c0-28 19-46 42-46s42 18 42 46z"/></g></svg>') center 42%/62% no-repeat;}
+  .fill.none{background:var(--t-none)}
+  .fill.none::after{content:"";position:absolute;inset:0;
+    background:url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="120" height="150" viewBox="0 0 120 150"><g fill="rgba(140,148,158,.55)"><circle cx="60" cy="56" r="27"/><path d="M20 150c0-26 18-42 40-42s40 16 40 42z"/></g></svg>') center 40%/52% no-repeat;}
+
+  /* top status band */
+  .status{position:relative;z-index:3;background:rgba(255,255,255,.55);
+    border-bottom:1px solid var(--t-hair);padding:8px 11px;line-height:1.3;
+    backdrop-filter:blur(6px)}
+  .status .row{font-size:12.5px;display:flex;gap:4px}
+  .status .lbl{color:var(--t-muted);font-weight:400}
+  .status .val{font-weight:400}
+  .ok{color:#8b929b}
+  .warn{color:var(--t-red)}
+  .mag{color:var(--t-mag)}
+
+  /* birthday flag */
+  .bday{position:absolute;top:8px;right:9px;z-index:6;background:rgba(255,255,255,.62);backdrop-filter:blur(6px);
+    border-radius:12px;padding:5px 9px 4px;box-shadow:0 2px 8px rgba(0,0,0,.28);
+    display:flex;flex-direction:column;align-items:center;line-height:1}
+  .bday .cake{font-size:30px;display:inline-block;transform-origin:50% 90%;animation:rczCake 1.8s ease-in-out infinite}
+  @keyframes rczCake{0%,100%{transform:translateY(0) rotate(0)}20%{transform:translateY(-3px) rotate(-9deg)}45%{transform:translateY(0) rotate(0)}70%{transform:translateY(-2px) rotate(9deg)}}
+  .conf{position:absolute;top:14px;left:50%;width:7px;height:7px;border-radius:1px;opacity:0;pointer-events:none;animation:rczConfetti 2.6s ease-out infinite}
+  @keyframes rczConfetti{0%{opacity:0;transform:translate(-50%,0) scale(.3) rotate(0)}10%{opacity:1}80%{opacity:1}100%{opacity:0;transform:translate(calc(-50% + var(--dx)),var(--dy)) scale(1) rotate(var(--r))}}
+  @media (prefers-reduced-motion:reduce){ .bday .cake{animation:none} .conf{display:none} }
+  .bday .mon{font:800 13px/1 var(--font);color:var(--t-mag);letter-spacing:.02em;margin-top:2px}
+
+  /* centre messaging */
+  .centre{position:relative;z-index:2;flex:1;display:flex;flex-direction:column;
+    align-items:center;justify-content:center;text-align:center;padding:14px 14px 4px;gap:8px}
+  .centre.push{justify-content:flex-start;padding-top:26px}
+  .add-photo{color:var(--t-red)}
+  .add-photo .big{font:900 25px/1.02 var(--font);letter-spacing:.01em}
+  .add-photo .addlink{font-size:16px;font-weight:700;color:var(--t-blue);text-decoration:underline;text-underline-offset:2px;white-space:nowrap}
+  .add-photo .sub{font:800 12px/1.28 var(--font);margin-top:8px;letter-spacing:.02em}
+  .add-photo .note{font:700 10.5px/1.25 var(--font);margin-top:6px}
+
+  .action{margin-top:auto;margin-bottom:8px;text-align:center;
+    background:rgba(255,255,255,.85);backdrop-filter:blur(4px);
+    border-radius:11px;padding:9px 15px 10px;box-shadow:0 2px 9px rgba(0,0,0,.17)}
+  .action .hd{font:800 13px/1.1 var(--font);letter-spacing:.05em;color:var(--t-red)}
+  .action .links{display:flex;gap:16px;justify-content:center;margin-top:5px}
+  .action .links a{font:700 12px/1 var(--font);color:var(--t-blue);text-decoration:underline;
+    text-underline-offset:2px}
+
+  .casual{display:flex;flex-direction:column;align-items:center;gap:2px}
+  .casual .k{font:600 13px/1 var(--font);color:var(--t-muted)}
+  .casual .ty{font:600 15px/1.1 var(--font);color:#495059;margin-top:6px}
+  .casual .nm{font:900 26px/1.05 var(--font);color:var(--t-ink)}
+
+  /* membership uses strip (#9) */
+  .memstrip{position:relative;z-index:4;background:var(--t-dark);color:#fff;
+    font:800 12px/1 var(--font);letter-spacing:.06em;text-align:center;padding:7px 8px}
+
+  /* bottom bar */
+  .bottom{position:relative;z-index:4;background:rgba(255,255,255,.55);
+    border-top:1px solid var(--t-hair);display:grid;grid-template-columns:auto 1fr auto;
+    align-items:center;gap:8px;padding:6px 10px;backdrop-filter:blur(6px)}
+  .tier{font:700 14px/1.32 var(--font)}
+  .tier.member{color:var(--t-blue)}
+  .tier.casual{color:#565d66}
+  .who{text-align:right;font-size:14px;line-height:1.34}
+  .who .ty{display:block;color:var(--t-muted);font-weight:600;font-size:14px}
+  .who .nm{display:block;font-weight:800;color:var(--t-ink)}
+  .shield{width:0;height:0} /* placeholder to keep grid; real shield below */
+  .idbadge{display:flex;flex-direction:column;align-items:center;line-height:1;cursor:pointer;
+    transition:opacity .18s ease,filter .18s ease;filter:drop-shadow(0 1px 2px rgba(0,0,0,.35))}
+  .idbadge.locked{opacity:.32;filter:grayscale(1);pointer-events:none;cursor:default}
+  .idbadge svg{display:block;width:50px;height:52px}
+
+  .foot{margin-top:44px;padding-top:18px;border-top:1px solid var(--hair);color:var(--muted);font-size:13px}
+  .foot b{color:var(--ink)}
+  .q{color:var(--t-red);font-weight:700}
+
+  .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(12px);
+    background:#1f2429;color:#fff;font:600 13px/1.35 var(--font);padding:11px 17px;border-radius:11px;
+    box-shadow:0 8px 26px rgba(0,0,0,.32);opacity:0;pointer-events:none;
+    transition:opacity .2s ease,transform .2s ease;z-index:60;max-width:90vw;text-align:center}
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+  @media (prefers-reduced-motion:reduce){ .toast{transition:opacity .2s ease} }
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <p class="eyebrow">ROLLER Check-in · Tile Redesign</p>
+    <h1>Unified check-in tiles — mockups for review</h1>
+    <p class="lede">One consistent tile for every scenario: a <b>Name</b> / <b>Photo</b> status readout up top,
+      the photo (or a grey placeholder) filling the middle, big red prompts only when action is needed, and a
+      constant bottom bar — <em>tier · guest · I.D.</em> Review and mark up anything; nothing here is live yet.</p>
+    <ul class="rules">
+      <li><b>Dropped:</b> visiting overlay</li>
+      <li><b>Merged:</b> mismatch + similar → one rule</li>
+      <li><b>Merged:</b> paid-member + mis-align → one rule</li>
+      <li><b>Removed:</b> name-meaning</li>
+      <li><b>Birthday:</b> caps month, bigger, 3-char max</li>
+      <li><b>I.D. badge:</b> slightly bigger</li>
+    </ul>
+  </header>
+
+  <section>
+    <div class="sec-head"><h2>Single conditions</h2><span>one flag at a time</span></div>
+    <div class="grid">
+
+      <!-- 5 no overlays -->
+      <figure>
+        <figcaption>
+          <div class="cap-row"><span class="num">5</span><span class="klass">no overlays</span></div>
+          <span class="desc">Member, name matches, photo on file — the clean case.</span>
+        </figcaption>
+        <div class="tile">
+          <div class="fill photo"></div>
+          <div class="status">
+            <div class="row"><span class="lbl">Name:</span><span class="val ok">Matched</span></div>
+            <div class="row"><span class="lbl">Photo:</span><span class="val ok">Showing</span></div>
+          </div>
+          <div class="centre"></div>
+          <div class="bottom">
+            <div class="tier member">Wonder Club<br>Member</div>
+            <div class="who"><span class="ty">Child </span><span class="nm">Eddie</span></div>
+            <div class="idbadge"><svg viewBox="0 0 66 68" xmlns="http://www.w3.org/2000/svg" aria-label="I.D. Checkin"><path d="M33 3 L61 12 L61 33 C61 49 48 59 33 64 C18 59 5 49 5 33 L5 12 Z" fill="#e0a316"/><text x="33" y="28" text-anchor="middle" font-family="-apple-system,Segoe UI,Roboto,sans-serif" font-size="11.5" font-weight="400" fill="#fff" letter-spacing=".2">Confirm</text><text x="33" y="49" text-anchor="middle" font-family="-apple-system,Segoe UI,Roboto,sans-serif" font-size="20" font-weight="400" fill="#fff">I.D.</text></svg></div>
+          </div>
+        </div>
+      </figure>
+
+      <!-- 2 casual -->
+      <figure>
+        <figcaption>
+          <div class="cap-row"><span class="num">2</span><span class="klass">.rcz-casual</span></div>
+          <span class="desc">Non-member booking — no photo or name check required.</span>
+        </figcaption>
+        <div class="tile">
+          <div class="fill none"></div>
+          <div class="status">
+            <div class="row"><span class="lbl">Name:</span><span class="val ok">No Match Required</span></div>
+            <div class="row"><span class="lbl">Photo:</span><span class="val ok">No Match Required</span></div>
+          </div>
+          <div class="bday"><span class="cake">🎂</span><span class="mon">JUL</span></div>
+          <div class="centre"></div>
+          <div class="bottom">
+            <div class="tier casual">Casual<br>Guest</div>
+            <div class="who"><span class="ty">Adult </span><span class="nm">Thomas</span></div>
+            <div class="idbadge"><svg viewBox="0 0 66 68" xmlns="http://www.w3.org/2000/svg" aria-label="I.D. Checkin"><path d="M33 3 L61 12 L61 33 C61 49 48 59 33 64 C18 59 5 49 5 33 L5 12 Z" fill="#e0a316"/><text x="33" y="28" text-anchor="middle" font-family="-apple-system,Segoe UI,Roboto,sans-serif" font-size="11.5" font-weight="400" fill="#fff" letter-spacing=".2">Confirm</text><text x="33" y="49" text-anchor="middle" font-family="-apple-system,Segoe UI,Roboto,sans-serif" font-size="20" font-weight="400" fill="#fff">I.D.</text></svg></div>
+          </div>
+        </div>
+      </figure>
+
+      <!-- 3 alert -->
+      <figure>
+        <figcaption>
+          <div class="cap-row"><span class="num">3</span><span class="klass">.rcz-alert</span></div>
+          <span class="desc">Member, name matches, but no photo — must add before check-in.</span>
+        </figcaption>
+        <div class="tile">
+          <div class="fill none"></div>
+          <div class="status">
+            <div class="row"><span class="lbl">Name:</span><span class="val ok">Matched</span></div>
+            <div class="row"><span class="lbl">Photo:</span><span class="val warn">Required Today</span></div>
+          </div>
+          <div class="bday"><span class="cake">🎂</span><span class="mon">AUG</span></div>
+          <div class="centre push">
+            <div class="add-photo">
+              <div class="big">ADD PHOTO NOW! <a href="#" class="addlink" data-jump="member">Add</a></div>
+              <div class="sub">WARNING: ANY CHECK-IN WITHOUT PHOTO WILL CAUSE CANCELLATION</div>
+            </div>
+          </div>
+          <div class="bottom">
+            <div class="tier member">Gold Pass<br>Member</div>
+            <div class="who"><span class="ty">Child </span><span class="nm">Stacey</span></div>
+            <div class="idbadge locked"><svg viewBox="0 0 66 68" xmlns="http://www.w3.org/2000/svg" aria-label="I.D. Checkin"><path d="M33 3 L61 12 L61 33 C61 49 48 59 33 64 C18 59 5 49 5 33 L5 12 Z" fill="#e0a316"/><text x="33" y="28" text-anchor="middle" font-family="-apple-system,Segoe UI,Roboto,sans-serif" font-size="11.5" font-weight="400" fill="#fff" letter-spacing=".2">Confirm</text><text x="33" y="49" text-anchor="middle" font-family="-apple-system,Segoe UI,Roboto,sans-serif" font-size="20" font-weight="400" fill="#fff">I.D.</text></svg></div>
+          </div>
+        </div>
+      </figure>
+
+      <!-- 6 mismatch/similar -->
+      <figure>
+        <figcaption>
+          <div class="cap-row"><span class="num">6</span><span class="klass">.rcz-mismatch / similar</span></div>
+          <span class="desc">Ticket name doesn't match the membership — treat as visitor, action needed.</span>
+        </figcaption>
+        <div class="tile">
+          <div class="fill photo"></div>
+          <div class="status">
+            <div class="row"><span class="lbl">Name:</span><span class="val warn">Not Matching</span></div>
+            <div class="row"><span class="lbl">Photo:</span><span class="val ok">Yes, see below</span></div>
+          </div>
+          <div class="centre">
+            <div class="action">
+              <div class="hd">ACTION REQUIRED:</div>
+              <div class="links"><a href="#">ADD A TICKET</a><a href="#">PASS NICKNAME</a></div>
+            </div>
+          </div>
+          <div class="bottom">
+            <div class="tier casual">Casual<br>Visitor</div>
+            <div class="who"><span class="ty">Adult </span><span class="nm">Thomas</span></div>
+            <div class="idbadge locked"><svg viewBox="0 0 66 68" xmlns="http://www.w3.org/2000/svg" aria-label="I.D. Checkin"><path d="M33 3 L61 12 L61 33 C61 49 48 59 33 64 C18 59 5 49 5 33 L5 12 Z" fill="#e0a316"/><text x="33" y="28" text-anchor="middle" font-family="-apple-system,Segoe UI,Roboto,sans-serif" font-size="11.5" font-weight="400" fill="#fff" letter-spacing=".2">Confirm</text><text x="33" y="49" text-anchor="middle" font-family="-apple-system,Segoe UI,Roboto,sans-serif" font-size="20" font-weight="400" fill="#fff">I.D.</text></svg></div>
+          </div>
+        </div>
+      </figure>
+
+      <!-- 1 paidmember/misalign -->
+      <figure>
+        <figcaption>
+          <div class="cap-row"><span class="num">1</span><span class="klass">paidmember / misalign</span></div>
+          <span class="desc">Discount landed on another guest — mismatched, but no action needed.</span>
+        </figcaption>
+        <div class="tile">
+          <div class="fill photo"></div>
+          <div class="status">
+            <div class="row"><span class="lbl">Name:</span><span class="val warn">Mismatched (assignment error only)</span></div>
+            <div class="row"><span class="lbl">Photo:</span><span class="val ok">Showing</span></div>
+          </div>
+          <div class="centre"></div>
+          <div class="bottom">
+            <div class="tier member">Wonder Club<br>Member</div>
+            <div class="who"><span class="ty">Child </span><span class="nm">Eddie</span></div>
+            <div class="idbadge"><svg viewBox="0 0 66 68" xmlns="http://www.w3.org/2000/svg" aria-label="I.D. Checkin"><path d="M33 3 L61 12 L61 33 C61 49 48 59 33 64 C18 59 5 49 5 33 L5 12 Z" fill="#e0a316"/><text x="33" y="28" text-anchor="middle" font-family="-apple-system,Segoe UI,Roboto,sans-serif" font-size="11.5" font-weight="400" fill="#fff" letter-spacing=".2">Confirm</text><text x="33" y="49" text-anchor="middle" font-family="-apple-system,Segoe UI,Roboto,sans-serif" font-size="20" font-weight="400" fill="#fff">I.D.</text></svg></div>
+          </div>
+        </div>
+      </figure>
+
+      <!-- 8 important/family -->
+      <figure>
+        <figcaption>
+          <div class="cap-row"><span class="num">8</span><span class="klass">.rcz-note important</span></div>
+          <span class="desc">Family membership — individual names still need adding.</span>
+        </figcaption>
+        <div class="tile">
+          <div class="fill photo"></div>
+          <div class="status">
+            <div class="row"><span class="lbl">Name:</span><span class="val warn">Names Required</span></div>
+            <div class="row"><span class="lbl">Photo:</span><span class="val ok">Showing</span></div>
+          </div>
+          <div class="centre">
+            <div class="action">
+              <div class="hd">ACTION REQUIRED:</div>
+              <div class="links"><a href="#" data-jump="member">ADD INDIVIDUAL NAMES</a></div>
+            </div>
+          </div>
+          <div class="bottom">
+            <div class="tier member">Wonder Club<br>Member</div>
+            <div class="who"><span class="ty">Child </span><span class="nm">Eddie</span></div>
+            <div class="idbadge locked"><svg viewBox="0 0 66 68" xmlns="http://www.w3.org/2000/svg" aria-label="I.D. Checkin"><path d="M33 3 L61 12 L61 33 C61 49 48 59 33 64 C18 59 5 49 5 33 L5 12 Z" fill="#e0a316"/><text x="33" y="28" text-anchor="middle" font-family="-apple-system,Segoe UI,Roboto,sans-serif" font-size="11.5" font-weight="400" fill="#fff" letter-spacing=".2">Confirm</text><text x="33" y="49" text-anchor="middle" font-family="-apple-system,Segoe UI,Roboto,sans-serif" font-size="20" font-weight="400" fill="#fff">I.D.</text></svg></div>
+          </div>
+        </div>
+      </figure>
+
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head"><h2>Combined conditions</h2><span>two flags at once</span></div>
+    <div class="grid">
+
+      <!-- 7 mismatch + alert -->
+      <figure>
+        <figcaption>
+          <div class="cap-row"><span class="num">7</span><span class="klass">.rcz-mismatch + .rcz-alert</span></div>
+          <span class="desc">Name not matching <em>and</em> no photo — both prompts stack.</span>
+        </figcaption>
+        <div class="tile">
+          <div class="fill none"></div>
+          <div class="status">
+            <div class="row"><span class="lbl">Name:</span><span class="val warn">Not Matching</span></div>
+            <div class="row"><span class="lbl">Photo:</span><span class="val warn">Required Today (Add)</span></div>
+          </div>
+          <div class="centre push">
+            <div class="add-photo">
+              <div class="big">ADD PHOTO NOW! <a href="#" class="addlink" data-jump="member">Add</a></div>
+              <div class="sub">WARNING: ANY CHECK-IN WITHOUT PHOTO WILL CAUSE CANCELLATION</div>
+            </div>
+            <div class="action">
+              <div class="hd">ACTION REQUIRED:</div>
+              <div class="links"><a href="#">ADD A TICKET</a><a href="#">PASS NICKNAME</a></div>
+            </div>
+          </div>
+          <div class="bottom">
+            <div class="tier member">Gold Pass<br>Member</div>
+            <div class="who"><span class="ty">Child </span><span class="nm">Stacey</span></div>
+            <div class="idbadge locked"><svg viewBox="0 0 66 68" xmlns="http://www.w3.org/2000/svg" aria-label="I.D. Checkin"><path d="M33 3 L61 12 L61 33 C61 49 48 59 33 64 C18 59 5 49 5 33 L5 12 Z" fill="#e0a316"/><text x="33" y="28" text-anchor="middle" font-family="-apple-system,Segoe UI,Roboto,sans-serif" font-size="11.5" font-weight="400" fill="#fff" letter-spacing=".2">Confirm</text><text x="33" y="49" text-anchor="middle" font-family="-apple-system,Segoe UI,Roboto,sans-serif" font-size="20" font-weight="400" fill="#fff">I.D.</text></svg></div>
+          </div>
+        </div>
+      </figure>
+
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head"><h2>Special panel</h2><span>membership found</span></div>
+    <div class="grid">
+
+      <!-- 9 membership found -->
+      <figure>
+        <figcaption>
+          <div class="cap-row"><span class="num">9</span><span class="klass">membership found</span></div>
+          <span class="desc">New membership panel — shows remaining uses above the bar.</span>
+        </figcaption>
+        <div class="tile">
+          <div class="fill photo"></div>
+          <div class="status">
+            <div class="row"><span class="lbl">Name:</span><span class="val ok">Matched</span></div>
+            <div class="row"><span class="lbl">Photo:</span><span class="val ok">Showing</span></div>
+          </div>
+          <div class="centre"></div>
+          <div class="memstrip">MEMBERSHIP: 1 USES</div>
+          <div class="bottom">
+            <div class="tier member">Wonder Club<br>Member</div>
+            <div class="who"><span class="ty">Child </span><span class="nm">Eddie</span></div>
+            <div class="idbadge"><svg viewBox="0 0 66 68" xmlns="http://www.w3.org/2000/svg" aria-label="I.D. Checkin"><path d="M33 3 L61 12 L61 33 C61 49 48 59 33 64 C18 59 5 49 5 33 L5 12 Z" fill="#e0a316"/><text x="33" y="28" text-anchor="middle" font-family="-apple-system,Segoe UI,Roboto,sans-serif" font-size="11.5" font-weight="400" fill="#fff" letter-spacing=".2">Confirm</text><text x="33" y="49" text-anchor="middle" font-family="-apple-system,Segoe UI,Roboto,sans-serif" font-size="20" font-weight="400" fill="#fff">I.D.</text></svg></div>
+          </div>
+        </div>
+      </figure>
+
+    </div>
+  </section>
+
+  <div class="foot">
+    <p><b>Two things I want your call on:</b></p>
+    <p>· <span class="q">Tile 6 (mismatch):</span> your image shows a grey placeholder but the status reads
+      "Photo: Yes, see below." Should the member's photo actually <em>display</em> here (so staff compare faces),
+      or stay grey? I've drawn it grey to match the image — easy to switch.</p>
+    <p>· <span class="q">Action links</span> ("Add ticket", "Pass nickname", "Add individual names") — I've made them
+      blue underlined links to read as tappable. Say if you'd rather they were red like the warning, or plain text.</p>
+  </div>
+</div>
+
+<div class="toast" id="rcz-toast" role="status" aria-live="polite"></div>
+<script>
+  (function(){
+    var toast = document.getElementById('rcz-toast');
+    function showToast(msg){
+      if(!toast) return;
+      toast.textContent = msg;
+      toast.classList.add('show');
+      clearTimeout(toast._t);
+      toast._t = setTimeout(function(){ toast.classList.remove('show'); }, 2000);
+    }
+    // Tiles whose I.D. shield is locked until staff action a prompt.
+    document.querySelectorAll('.tile').forEach(function(tile){
+      var shield = tile.querySelector('.idbadge.locked');
+      if(!shield) return;
+      tile.querySelectorAll('.action .links a, .add-photo .addlink').forEach(function(link){
+        link.addEventListener('click', function(e){
+          e.preventDefault();
+          // "Add individual names" also jumps to the member profile (forward-to-pill in the live script).
+          if(link.hasAttribute('data-jump')){
+            showToast('→ Opening member profile to add name… (live: jumps to the member tab)');
+          }
+          shield.classList.remove('locked');   // unlock the shield; nothing else changes
+        });
+      });
+    });
+    // Birthday flags: confetti bursts (cake wiggle is pure CSS), matching the live script.
+    document.querySelectorAll('.bday').forEach(function(b){
+      var colors=['#f5c518','#e5231b','#2f6fed','#b4308f','#16a34a','#e0a316'];
+      for(var i=0;i<6;i++){
+        var c=document.createElement('i'); c.className='conf';
+        c.style.background=colors[i%colors.length];
+        c.style.setProperty('--dx',(Math.round((Math.random()*2-1)*22))+'px');
+        c.style.setProperty('--dy',(-10-Math.round(Math.random()*24))+'px');
+        c.style.setProperty('--r',(Math.round(Math.random()*360))+'deg');
+        c.style.animationDelay=(Math.random()*2).toFixed(2)+'s';
+        b.appendChild(c);
+      }
+    });
+  })();
+</script>
