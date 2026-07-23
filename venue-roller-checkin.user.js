@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Venue — ROLLER Check-in Cards + Member Photos
 // @namespace    venue.roller.checkin-cards
-// @version      5.37
+// @version      5.38
 // @description  Reformats the ROLLER POS booking check-in list into full-frame photo cards, surfaces member photos on load (no Verify click), alerts when a member has no photo, handles family memberships (best-effort photos + add-name prompt) and close/similar name matches.
 // @match        https://pos.roller.app/*
 // @match        https://*.roller.app/*
@@ -607,11 +607,11 @@
       /* overlays ON TOP of the photo */
       /* select checkbox hidden in the new design */
       'app-bip-summary:not(.rcz-skip) .summary__wrapper mat-checkbox.align-top--checkbox{display:none !important;}',
-      'app-bip-summary:not(.rcz-skip) .summary__wrapper .summary-detail{position:absolute !important;right:88px !important;left:auto !important;bottom:16px !important;flex:none !important;width:auto !important;max-width:44% !important;background:none !important;border:none !important;border-radius:0 !important;padding:0 !important;box-shadow:none !important;z-index:6 !important;text-align:right !important;}',
+      'app-bip-summary:not(.rcz-skip) .summary__wrapper .summary-detail{position:absolute !important;right:88px !important;left:auto !important;bottom:14px !important;flex:none !important;width:auto !important;max-width:44% !important;background:none !important;border:none !important;border-radius:0 !important;padding:0 !important;box-shadow:none !important;z-index:6 !important;text-align:right !important;}',
       'app-bip-summary:not(.rcz-skip) .summary-detail p.summary-detail__item:not(.summary-detail__item--emphasis){display:none !important;}',
       /* category ("Adult") smaller & muted; name ("Erin") larger, dark, bold */
-      'app-bip-summary:not(.rcz-skip) .summary-detail .summary-detail__item--emphasis{font-size:12.5px !important;font-weight:600 !important;color:#7b828c !important;margin:0 !important;}',
-      'app-bip-summary:not(.rcz-skip) .summary-detail .summary-detail__item-holder-wrapper{display:block !important;font-size:15px !important;font-weight:800 !important;color:#1f2933 !important;margin-top:0 !important;line-height:1.18 !important;}',
+      'app-bip-summary:not(.rcz-skip) .summary-detail .summary-detail__item--emphasis{font-size:14px !important;font-weight:600 !important;color:#7b828c !important;margin:0 !important;line-height:1.32 !important;}',
+      'app-bip-summary:not(.rcz-skip) .summary-detail .summary-detail__item-holder-wrapper{display:block !important;font-size:14px !important;font-weight:800 !important;color:#1f2933 !important;margin-top:0 !important;line-height:1.32 !important;}',
       /* compress the "Select all / Hide checked in" header — trim the top gap and pull the */
       /* bottom in to ~32px (tight, but enough that ROLLER\'s verify banner clears the row) */
       '.panel__header:has(.bip-list-header){padding-top:6px !important;padding-bottom:32px !important;}',
@@ -667,14 +667,14 @@
       /* MEMBERSHIP TIER badge — small pill low over the photo */
       /* membership tag, bottom-LEFT: two lines ("Membership" over the tier), dark border. */
       /* min-height 66px so the tag matches the name label + shield heights (Tom\'s "similar heights" mock) */
-      '.rcz-badge{position:absolute !important;left:12px !important;right:auto !important;bottom:12px !important;z-index:6 !important;display:flex !important;flex-direction:column !important;align-items:flex-start !important;justify-content:flex-end !important;gap:0 !important;white-space:nowrap !important;text-align:left !important;pointer-events:none !important;background:none !important;border:none !important;box-shadow:none !important;padding:0 !important;}',
-      '.rcz-badge__tier{font:700 14px/1.22 Roboto,Arial,sans-serif !important;color:#2f6fed !important;}',
-      '.rcz-badge__lbl{font:700 14px/1.22 Roboto,Arial,sans-serif !important;color:#2f6fed !important;}',
+      '.rcz-badge{position:absolute !important;left:12px !important;right:auto !important;bottom:14px !important;z-index:6 !important;display:flex !important;flex-direction:column !important;align-items:flex-start !important;justify-content:flex-end !important;gap:0 !important;white-space:nowrap !important;text-align:left !important;pointer-events:none !important;background:none !important;border:none !important;box-shadow:none !important;padding:0 !important;}',
+      '.rcz-badge__tier{font:700 14px/1.32 Roboto,Arial,sans-serif !important;color:#2f6fed !important;}',
+      '.rcz-badge__lbl{font:700 14px/1.32 Roboto,Arial,sans-serif !important;color:#2f6fed !important;}',
       '.rcz-badge--gold .rcz-badge__tier,.rcz-badge--gold .rcz-badge__lbl,.rcz-badge--wonder .rcz-badge__tier,.rcz-badge--wonder .rcz-badge__lbl{color:#2f6fed !important;}',
       /* link variant: base badge is pointer-events:none, so re-enable clicks + show it is tappable */
       '.rcz-badge--link{pointer-events:auto !important;cursor:pointer !important;text-decoration:none !important;transition:filter .1s,box-shadow .1s !important;}',
       '.rcz-badge--link:hover{filter:brightness(1.07) !important;box-shadow:0 3px 13px rgba(0,0,0,.45) !important;text-decoration:none !important;}',
-      '.rcz-badge--link .rcz-badge__tier{text-decoration:underline !important;text-decoration-thickness:1px !important;text-underline-offset:2px !important;}',
+      '.rcz-badge--link .rcz-badge__tier{text-decoration:none !important;}',
       /* NOTE banner over a photo card — family "add name" prompt / close-name "similar name" prompt.
          Sits across the top with a dark scrim; left padding clears the checkbox. */
       /* uniform left indent clears the checkbox (top-left over the card) so EVERY line — including */
