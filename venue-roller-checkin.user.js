@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Venue — ROLLER Check-in Cards + Member Photos
 // @namespace    venue.roller.checkin-cards
-// @version      5.22
+// @version      5.23
 // @description  Reformats the ROLLER POS booking check-in list into full-frame photo cards, surfaces member photos on load (no Verify click), alerts when a member has no photo, handles family memberships (best-effort photos + add-name prompt) and close/similar name matches.
 // @match        https://pos.roller.app/*
 // @run-at       document-start
@@ -766,6 +766,43 @@
     if (!t && cardId && state.formNames[cardId]) t = state.formNames[cardId];
     return t;
   }
+  // Family-membership guard: the blue discount pills list the TRUE members on the membership(s) used on
+  // this booking (e.g. "Ciara Kett"). If a ticket draws on a membership but the holder isn't one of those
+  // named members (e.g. an adult "Will" riding on Ciara's slot), flag it — even when ROLLER's own discount
+  // name field let it through as a match. Pairs the odd-one-out ticket to the odd-one-out member to name it.
+  function pillMismatchCheck(w, cardId) {
+    var pills = document.querySelectorAll('a[id^="membership-discount-link-"]');
+    if (!pills.length) return null;
+    var pillFirsts = [];
+    pills.forEach(function (a) {
+      var full = (a.textContent || '').replace(/^\s*member:\s*/i, '').replace(/\s+/g, ' ').trim();
+      var f = firstName(full); if (f && pillFirsts.indexOf(f) < 0) pillFirsts.push(f);
+    });
+    var nm = firstName(holderNameFor(w, cardId));
+    if (!nm) return null;                          // no name to compare -> leave alone
+    if (pillFirsts.indexOf(nm) >= 0) return null;  // ticket-holder IS a named member -> fine
+    for (var i = 0; i < pillFirsts.length; i++) if (closeName(pillFirsts[i], nm)) return null; // close variant -> handled elsewhere
+    // genuine interloper. Find the single membership name not claimed by any ticket, so we can name it.
+    var ticketFirsts = [];
+    document.querySelectorAll('app-bip-summary:not(.rcz-skip) .summary__wrapper').forEach(function (w2) {
+      var b2 = w2.querySelector('button[id^="booking-details-button-"]'); if (!b2) return;
+      var c2 = b2.id.replace('booking-details-button-', ''); var i2 = state.byCard[c2];
+      if (i2 && i2.member) { var n2 = firstName(holderNameFor(w2, c2)); if (n2) ticketFirsts.push(n2); }
+    });
+    var unclaimed = pillFirsts.filter(function (pf) { return ticketFirsts.indexOf(pf) < 0; });
+    return { memberName: unclaimed.length === 1 ? proper(unclaimed[0]) : '', ticketName: proper(nm) };
+  }
+  // render a card as a name-mismatch (red overlay) while KEEPING the member photo behind it, if present
+  function showMismatch(w, btn, icon, img, cardId, memberName, ticketName, tier) {
+    if (img) { /* keep photo */ } else { var im = btn.querySelector('img.rcz-photo'); if (im) img = im; }
+    if (icon && (img || btn.querySelector('img.rcz-photo'))) icon.style.display = 'none';
+    var mem = '<b>' + esc((memberName || 'another member').toUpperCase()) + '</b>';
+    var tk = esc(ticketName || 'this guest');
+    var note = esc(CFG.MISMATCH_NOTE_TMPL).split('{MEMBER}').join(mem).split('{TICKET}').join(tk);
+    var onPhoto = !!(w.querySelector('img.rcz-photo') || btn.querySelector('img.rcz-photo'));
+    addMismatch(w, note, onPhoto); clrAlert(w); clrCasual(w); clrVisiting(w); clrNote(w);
+    if (tier) addBadge(w, tier, null); else clrBadge(w);
+  }
   // ROLLER draws the member's own photo in the avatar button as <img> with a "/ticket/..." CDN src when
   // one is on file. Our membership API lookup occasionally returns no imageFileName even though ROLLER
   // has the photo — so treat this rendered photo as the source of truth for "photo on file".
@@ -915,11 +952,17 @@
           if (!img) { img = document.createElement('img'); img.className = 'rcz-photo'; img.alt = ''; btn.appendChild(img); }
           var url = CFG.CDN + info.photo;
           if (img.getAttribute('src') !== url) img.setAttribute('src', url);
-          addBadge(w, info.tier, memHref(info));
-          clrAlert(w); clrCasual(w); clrMismatch(w); clrVisiting(w);
-          // photo cards can carry a prompt: family -> "add name"; close name -> "confirm"; paid member ->
-          // "discount mis-assigned, total still correct"
-          memberNote(w, info);
+          // guard: if the ticket-holder isn't a named member on the membership, flag it (keep the photo behind)
+          var pm = (info.family || info.closematch) ? null : pillMismatchCheck(w, cardId);
+          if (pm) {
+            showMismatch(w, btn, icon, img, cardId, pm.memberName, pm.ticketName, info.tier);
+          } else {
+            addBadge(w, info.tier, memHref(info));
+            clrAlert(w); clrCasual(w); clrMismatch(w); clrVisiting(w);
+            // photo cards can carry a prompt: family -> "add name"; close name -> "confirm"; paid member ->
+            // "discount mis-assigned, total still correct"
+            memberNote(w, info);
+          }
         } else if (info && info.misaligned) {
           // discount was mis-assigned to this non-member guest, but the booking total is correct. Don't
           // raise the alarming red NAME MIS-MATCH — present a normal casual booking tile, keeping the
@@ -957,9 +1000,14 @@
             if (!img) { img = document.createElement('img'); img.className = 'rcz-photo'; img.alt = ''; btn.appendChild(img); }
             var nsrc = np.getAttribute('src');
             if (img.getAttribute('src') !== nsrc) img.setAttribute('src', nsrc);
-            addBadge(w, info.tier, memHref(info));
-            clrAlert(w); clrCasual(w); clrMismatch(w); clrVisiting(w);
-            memberNote(w, info);
+            var pmn = (info.family || info.closematch) ? null : pillMismatchCheck(w, cardId);
+            if (pmn) {
+              showMismatch(w, btn, icon, img, cardId, pmn.memberName, pmn.ticketName, info.tier);
+            } else {
+              addBadge(w, info.tier, memHref(info));
+              clrAlert(w); clrCasual(w); clrMismatch(w); clrVisiting(w);
+              memberNote(w, info);
+            }
           } else {
             // matched member, genuinely no photo on file -> "requires photo" alert
             if (img) img.remove();
