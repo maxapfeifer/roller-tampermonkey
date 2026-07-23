@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Venue — ROLLER Check-in Cards + Member Photos
 // @namespace    venue.roller.checkin-cards
-// @version      5.38
+// @version      5.39
 // @description  Reformats the ROLLER POS booking check-in list into full-frame photo cards, surfaces member photos on load (no Verify click), alerts when a member has no photo, handles family memberships (best-effort photos + add-name prompt) and close/similar name matches.
 // @match        https://pos.roller.app/*
 // @match        https://*.roller.app/*
@@ -634,9 +634,9 @@
       (CFG.SHOW_SHIELD ? 'app-bip-summary:not(.rcz-skip) .summary__wrapper button[id^="check-in-button"].theme--success mat-icon{color:#fff !important;margin-bottom:6px !important;}' : ''),
 
       /* ALERT (member with no photo) — fills the whole card and dominates; icon hidden */
-      '.rcz-alert{position:absolute !important;inset:0 !important;display:flex !important;flex-direction:column !important;align-items:center !important;justify-content:center !important;text-align:center !important;color:#e5231b !important;z-index:5 !important;pointer-events:none !important;padding:16px 18px 78px !important;gap:12px !important;}',
-      '.rcz-alert__hd{font:900 48px/1 Roboto,Arial,sans-serif !important;letter-spacing:.02em !important;}',
-      '.rcz-alert__body{font:400 18px/1.32 Roboto,Arial,sans-serif !important;}',
+      '.rcz-alert{position:absolute !important;inset:0 !important;display:flex !important;flex-direction:column !important;align-items:center !important;justify-content:center !important;text-align:center !important;color:#e5231b !important;z-index:5 !important;pointer-events:none !important;padding:16px 18px 92px !important;gap:8px !important;}',
+      '.rcz-alert__hd{font:900 25px/1.02 Roboto,Arial,sans-serif !important;letter-spacing:.01em !important;}',
+      '.rcz-alert__body{font:800 12px/1.28 Roboto,Arial,sans-serif !important;}',
       'app-bip-summary:not(.rcz-skip) .summary__wrapper.rcz-alert-on button[id^="booking-details-button"] mat-icon{display:none !important;}',
       /* CASUAL (non-member) — calm grey, same card-filling layout; icon hidden */
       '.rcz-casual{position:absolute !important;left:12px !important;bottom:12px !important;z-index:6 !important;pointer-events:none !important;}',
@@ -710,7 +710,7 @@
       '.rcz-mem-name__cat{font-size:15px !important;font-weight:700 !important;color:#6b7280 !important;}',
       '.rcz-mem-name__nm{font-size:22px !important;font-weight:900 !important;color:#1f2933 !important;line-height:1.1 !important;margin-top:1px !important;}',
       /* STATUS BAND — Name:/Photo: readout across the top of the tile (grey = fine, red = needs action) */
-      '.rcz-status{position:absolute !important;top:0 !important;left:0 !important;right:0 !important;z-index:6 !important;pointer-events:none !important;background:rgba(255,255,255,.55) !important;-webkit-backdrop-filter:blur(6px) !important;backdrop-filter:blur(6px) !important;border-bottom:1px solid rgba(0,0,0,.07) !important;padding:7px 11px !important;font:400 12.5px/1.3 Roboto,Arial,sans-serif !important;color:#1f2933 !important;}',
+      '.rcz-status{position:absolute !important;top:0 !important;left:0 !important;right:0 !important;z-index:6 !important;pointer-events:none !important;background:rgba(255,255,255,.55) !important;-webkit-backdrop-filter:blur(6px) !important;backdrop-filter:blur(6px) !important;border-bottom:1px solid rgba(0,0,0,.07) !important;padding:8px 11px !important;font:400 12.5px/1.3 Roboto,Arial,sans-serif !important;color:#1f2933 !important;}',
       '.rcz-status__row{display:flex !important;gap:4px !important;}',
       '.rcz-status__lbl{color:#7b828c !important;}',
       '.rcz-status__ok{color:#8b929b !important;}',
@@ -726,7 +726,7 @@
       '.rcz-actreq{position:absolute !important;left:12px !important;right:12px !important;bottom:88px !important;z-index:6 !important;pointer-events:none !important;background:rgba(255,255,255,.86) !important;-webkit-backdrop-filter:blur(4px) !important;backdrop-filter:blur(4px) !important;border-radius:11px !important;padding:9px 12px 10px !important;box-shadow:0 2px 9px rgba(0,0,0,.17) !important;text-align:center !important;}',
       '.rcz-actreq__hd{font:800 13px/1.1 Roboto,Arial,sans-serif !important;letter-spacing:.05em !important;color:#e5231b !important;}',
       '.rcz-actreq__links{display:flex !important;gap:16px !important;justify-content:center !important;margin-top:5px !important;flex-wrap:wrap !important;}',
-      '.rcz-actreq a,.rcz-addlink{color:#2f6fed !important;text-decoration:underline !important;text-underline-offset:2px !important;pointer-events:auto !important;cursor:pointer !important;font:700 12.5px/1 Roboto,Arial,sans-serif !important;}',
+      '.rcz-actreq a,.rcz-addlink{color:#2f6fed !important;text-decoration:underline !important;text-underline-offset:2px !important;pointer-events:auto !important;cursor:pointer !important;font:700 12px/1 Roboto,Arial,sans-serif !important;}',
       '.rcz-addlink{font-size:16px !important;margin-left:8px !important;}'
     ].join('\n');
     document.head.appendChild(s);
