@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Venue — ROLLER Check-in Cards + Member Photos
 // @namespace    venue.roller.checkin-cards
-// @version      5.31
+// @version      5.32
 // @description  Reformats the ROLLER POS booking check-in list into full-frame photo cards, surfaces member photos on load (no Verify click), alerts when a member has no photo, handles family memberships (best-effort photos + add-name prompt) and close/similar name matches.
 // @match        https://pos.roller.app/*
 // @run-at       document-start
@@ -35,7 +35,7 @@
     PLACEHOLDER_ICON_PX: 150,// size of the grey person icon when there's no photo
     CDN:              'https://cdn.rollerdigital.com/ticket/',
     GET_MEMBERSHIP:   'https://doorlist.roller.app/api/customers/get-membership',
-    ALERT_LINES:      ['PHOTO REQUIRED NOW', 'THE SYSTEM CANCEL\'S MEMBERSHIPS IF A CHECK-IN OCCURS WITHOUT A PHOTO ON FILE'],
+    ALERT_LINES:      ['ADD PHOTO NOW!', 'WARNING: ANY CHECK-IN WITHOUT PHOTO WILL CAUSE CANCELLATION'],
     // Casual (non-member) card: big NAME, then the ticket TYPE, then a small sub-line.
     // Solo tickets show the type upper-cased (ADULT/CHILD/…); "Book for 6 @ $…" package tickets
     // show "Group of 6". {N} filled at render time.
