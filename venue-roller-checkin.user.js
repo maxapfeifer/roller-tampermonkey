@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Venue — ROLLER Check-in Cards + Member Photos
 // @namespace    venue.roller.checkin-cards
-// @version      5.26
+// @version      5.27
 // @description  Reformats the ROLLER POS booking check-in list into full-frame photo cards, surfaces member photos on load (no Verify click), alerts when a member has no photo, handles family memberships (best-effort photos + add-name prompt) and close/similar name matches.
 // @match        https://pos.roller.app/*
 // @run-at       document-start
@@ -1134,7 +1134,14 @@
         if (tileBtn) {
           var ahost = tileBtn.closest('app-bip-summary');
           var alertEl = ahost ? ahost.querySelector('.rcz-alert[data-rcz-href]') : null;
-          if (alertEl) { ev.preventDefault(); forwardToPill(alertEl.getAttribute('data-rcz-href')); return; }
+          if (alertEl) {
+            var ah = alertEl.getAttribute('data-rcz-href');
+            // preventDefault() alone does NOT cancel ROLLER's own (click) handler on this <button> — that
+            // handler still fires on the bubble phase and routes to the ticket, overriding our membership
+            // nav (the "correctly links through, then breaks on the way" symptom). stopImmediatePropagation
+            // in this capture-phase listener kills the event before the native tile handler ever sees it.
+            if (ah && forwardToPill(ah)) { ev.preventDefault(); ev.stopImmediatePropagation(); return; }
+          }
         }
       } catch (e) {}
     }, true);
