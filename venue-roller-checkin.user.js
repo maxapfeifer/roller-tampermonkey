@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Venue — ROLLER Check-in Cards + Member Photos
 // @namespace    venue.roller.checkin-cards
-// @version      5.28
+// @version      5.29
 // @description  Reformats the ROLLER POS booking check-in list into full-frame photo cards, surfaces member photos on load (no Verify click), alerts when a member has no photo, handles family memberships (best-effort photos + add-name prompt) and close/similar name matches.
 // @match        https://pos.roller.app/*
 // @run-at       document-start
@@ -11,6 +11,19 @@
 // ==/UserScript==
 (function () {
   'use strict';
+
+  /* ======================================================================
+     DEBUG KILL-SWITCH — fully disables this script so ROLLER's stock UX is
+     visible, for comparing native behaviour against our skin. When active, we
+     inject nothing, add no overlays/classes, install no click handlers, and
+     start no observers. Toggle from the browser console, then reload the page:
+         localStorage.setItem('rcz-off','1');   // OFF  -> stock ROLLER UX
+         localStorage.removeItem('rcz-off');    // ON   -> our skin (default)
+     Or append #rcz-off to the URL for a one-off disable without persisting.
+     ====================================================================== */
+  try {
+    if (localStorage.getItem('rcz-off') === '1' || /[?#].*rcz-off/.test(location.href)) return;
+  } catch (e) {}
 
   /* ======================================================================
      CONFIG  — the dials you can safely tweak
