@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Venue — ROLLER Check-in Cards + Member Photos
 // @namespace    venue.roller.checkin-cards
-// @version      5.30
+// @version      5.31
 // @description  Reformats the ROLLER POS booking check-in list into full-frame photo cards, surfaces member photos on load (no Verify click), alerts when a member has no photo, handles family memberships (best-effort photos + add-name prompt) and close/similar name matches.
 // @match        https://pos.roller.app/*
 // @run-at       document-start
@@ -704,7 +704,16 @@
       '.rcz-mem-info__row b{font-weight:900 !important;color:#111827 !important;}',
       '.rcz-mem-name{position:absolute !important;right:92px !important;bottom:12px !important;z-index:6 !important;display:flex !important;flex-direction:column !important;justify-content:center !important;min-height:66px !important;box-sizing:border-box !important;white-space:nowrap !important;background:#fff !important;border:1px solid #ececec !important;border-radius:12px !important;padding:7px 12px !important;box-shadow:0 2px 8px rgba(0,0,0,.35) !important;}',
       '.rcz-mem-name__cat{font-size:15px !important;font-weight:700 !important;color:#6b7280 !important;}',
-      '.rcz-mem-name__nm{font-size:22px !important;font-weight:900 !important;color:#1f2933 !important;line-height:1.1 !important;margin-top:1px !important;}'
+      '.rcz-mem-name__nm{font-size:22px !important;font-weight:900 !important;color:#1f2933 !important;line-height:1.1 !important;margin-top:1px !important;}',
+      /* STATUS BAND — Name:/Photo: readout across the top of the tile (grey = fine, red = needs action) */
+      '.rcz-status{position:absolute !important;top:0 !important;left:0 !important;right:0 !important;z-index:6 !important;pointer-events:none !important;background:rgba(255,255,255,.55) !important;-webkit-backdrop-filter:blur(6px) !important;backdrop-filter:blur(6px) !important;border-bottom:1px solid rgba(0,0,0,.07) !important;padding:7px 11px !important;font:400 12.5px/1.3 -apple-system,Segoe UI,Roboto,sans-serif !important;color:#1f2933 !important;}',
+      '.rcz-status__row{display:flex !important;gap:4px !important;}',
+      '.rcz-status__lbl{color:#7b828c !important;}',
+      '.rcz-status__ok{color:#8b929b !important;}',
+      '.rcz-status__warn{color:#e5231b !important;}',
+      /* top overlays sit clear of the status band */
+      'app-bip-summary:not(.rcz-skip) .summary__wrapper.rcz-alert-on .rcz-alert,app-bip-summary:not(.rcz-skip) .summary__wrapper.rcz-mismatch-on .rcz-mismatch{padding-top:52px !important;}',
+      '.rcz-note{top:47px !important;}'
     ].join('\n');
     document.head.appendChild(s);
   }
@@ -941,6 +950,27 @@
     if (el.textContent !== t) el.textContent = t;
   }
   function clrMeaning(w) { var el = w.querySelector('.rcz-meaning'); if (el) el.remove(); }
+  // STATUS BAND — top-of-tile Name:/Photo: readout. warn=true paints the value red (needs action).
+  function paintStatus(w, nm, nmW, ph, phW) {
+    var el = w.querySelector('.rcz-status');
+    if (!el) { el = document.createElement('div'); el.className = 'rcz-status'; w.appendChild(el); }
+    var html = '<div class="rcz-status__row"><span class="rcz-status__lbl">Name:</span><span class="' + (nmW ? 'rcz-status__warn' : 'rcz-status__ok') + '">' + esc(nm) + '</span></div>' +
+               '<div class="rcz-status__row"><span class="rcz-status__lbl">Photo:</span><span class="' + (phW ? 'rcz-status__warn' : 'rcz-status__ok') + '">' + esc(ph) + '</span></div>';
+    if (el.getAttribute('data-h') !== html) { el.innerHTML = html; el.setAttribute('data-h', html); }
+  }
+  function clrStatus(w) { var el = w.querySelector('.rcz-status'); if (el) el.remove(); }
+  // derive the Name:/Photo: status for a card from its detected scenario. Returns null while loading.
+  function statusInfo(w, info) {
+    if (!info || info.pending) return null;
+    var hasPhoto = !!w.querySelector('img.rcz-photo');
+    if (info.member === false && !info.misaligned) return { nm: 'No Match Required', nmW: false, ph: 'No Match Required', phW: false };
+    if (info.misaligned || info.paidMember)        return { nm: 'Mismatched (assignment error only)', nmW: true, ph: hasPhoto ? 'Showing' : 'No Match Required', phW: false };
+    if (info.mismatch)                             return { nm: 'Not Matching', nmW: true, ph: hasPhoto ? 'Yes, see below' : 'Required Today (Add)', phW: !hasPhoto };
+    if (info.family)                               return { nm: 'Names Required', nmW: true, ph: hasPhoto ? 'Showing' : 'Required Today', phW: !hasPhoto };
+    if (info.closematch)                           return { nm: 'Not Matching', nmW: true, ph: hasPhoto ? 'Yes, see below' : 'Required Today', phW: !hasPhoto };
+    if (info.member)                               return { nm: 'Matched', nmW: false, ph: hasPhoto ? 'Showing' : 'Required Today', phW: !hasPhoto };
+    return null;
+  }
   // ---- membership card treatment (photo fill + "Membership Found" panel) ----
   function renderMembership(w, host) {
     var btn = w.querySelector('button[id^="booking-details-button-"]');
@@ -994,7 +1024,7 @@
       if (!activeRoute()) {
         // not the booking check-in list -> strip our styling/overlays so ROLLER's native pages work
         var st = document.getElementById('rcz-style'); if (st) st.remove();
-        document.querySelectorAll('.rcz-alert, .rcz-casual, .rcz-mismatch, .rcz-visiting, .rcz-badge, .rcz-note, .rcz-bday, .rcz-meaning, .rcz-mem-info, .rcz-mem-name, img.rcz-photo').forEach(function (e) { e.remove(); });
+        document.querySelectorAll('.rcz-alert, .rcz-casual, .rcz-mismatch, .rcz-visiting, .rcz-badge, .rcz-note, .rcz-bday, .rcz-meaning, .rcz-status, .rcz-mem-info, .rcz-mem-name, img.rcz-photo').forEach(function (e) { e.remove(); });
         document.querySelectorAll('.rcz-alert-on, .rcz-casual-on, .rcz-mismatch-on, .rcz-visiting-on').forEach(function (w) { w.classList.remove('rcz-alert-on', 'rcz-casual-on', 'rcz-mismatch-on', 'rcz-visiting-on'); });
         document.querySelectorAll('app-bip-summary.rcz-mem, app-bip-summary.rcz-skip').forEach(function (h) { h.classList.remove('rcz-mem', 'rcz-skip'); });
         document.querySelectorAll('app-bip-summary:not(.rcz-skip) button[id^="booking-details-button-"] mat-icon').forEach(function (ic) { ic.style.display = ''; });
@@ -1093,7 +1123,9 @@
           if (icon) icon.style.display = '';
           clrAlert(w); clrCasual(w); clrMismatch(w); clrVisiting(w); clrNote(w); clrBadge(w);
         }
-        // --- prototype extras, independent of the card state above ---
+        // --- status band + prototype extras, independent of the card state above ---
+        var si = statusInfo(w, info);
+        if (si) paintStatus(w, si.nm, si.nmW, si.ph, si.phW); else clrStatus(w);
         var bm = state.birthdays[cardId];
         if (CFG.SHOW_BIRTHDAY && bm && birthdayInWindow(bm)) {
           addBirthday(w, bm);
