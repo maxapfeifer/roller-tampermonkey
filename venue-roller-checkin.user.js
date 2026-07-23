@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Venue — ROLLER Check-in Cards + Member Photos
 // @namespace    venue.roller.checkin-cards
-// @version      5.24
+// @version      5.25
 // @description  Reformats the ROLLER POS booking check-in list into full-frame photo cards, surfaces member photos on load (no Verify click), alerts when a member has no photo, handles family memberships (best-effort photos + add-name prompt) and close/similar name matches.
 // @match        https://pos.roller.app/*
 // @run-at       document-start
@@ -399,14 +399,40 @@
             || pick(function (c) { return /TicketHolder\.(Full)?Name$/i.test(c.db) || /^full\s*name$|^name$/i.test(c.title); });
       var nameId = nf ? nf.id : null;
       var nameFirstWord = nf ? !/first/i.test(nf.db + ' ' + nf.title) : false; // full-name field -> keep only the first word
+      // Pull each answer group into {part, name, month}, in form order.
+      var entries = [];
       (resp.items || []).forEach(function (g) {
-        var part = String(g.uniqueGroupId || '').split('-')[1]; if (!part) return;
+        var part = String(g.uniqueGroupId || '').split('-')[1] || '';
+        var month = null, nm = '';
         (g.items || []).forEach(function (si) {
           if (!si || !si.answer || !si.answer.length) return;
-          if (dobId != null && si.id === dobId) { var month = Number(si.answer[0]); if (month >= 1 && month <= 12) state.birthdays[part] = month; }
-          if (nameId != null && si.id === nameId) { var v = String(si.answer[0] || '').trim(); if (v) { if (nameFirstWord) v = v.split(/\s+/)[0]; state.formNames[part] = proper(v); } }
+          if (dobId != null && si.id === dobId) { var m = Number(si.answer[0]); if (m >= 1 && m <= 12) month = m; }
+          if (nameId != null && si.id === nameId) { var v = String(si.answer[0] || '').trim(); if (v) nm = nameFirstWord ? v.split(/\s+/)[0] : v; }
         });
+        if (nm || month) entries.push({ part: part, name: nm, month: month, mapped: false });
       });
+      var bip = (state.booking && Array.isArray(state.booking.bipDetail)) ? state.booking.bipDetail : [];
+      var currentPart = {}; bip.forEach(function (p) { currentPart[String(p.bookingItemPartId)] = true; });
+      // 1) direct match: the answer's ticket id is a ticket that still exists on the booking.
+      entries.forEach(function (e) {
+        if (e.part && currentPart[e.part]) {
+          if (e.month) state.birthdays[e.part] = e.month;
+          if (e.name) state.formNames[e.part] = proper(e.name);
+          e.mapped = true;
+        }
+      });
+      // 2) positional fallback: answers whose ticket was replaced (e.g. re-added at the door -> new id) can't
+      //    match by id. Pair the leftover answers to the still-blank tickets in booking order, best-effort.
+      var orphans = entries.filter(function (e) { return !e.mapped; });
+      var blanks = bip.filter(function (p) {
+        var tp = String(p.bookingItemPartId);
+        return !String(p.name || '').trim() && !state.formNames[tp];
+      });
+      for (var oi = 0; oi < orphans.length && oi < blanks.length; oi++) {
+        var oe = orphans[oi], btp = String(blanks[oi].bookingItemPartId);
+        if (oe.name && !state.formNames[btp]) state.formNames[btp] = proper(oe.name);
+        if (oe.month && !state.birthdays[btp]) state.birthdays[btp] = oe.month;
+      }
     } catch (e) {}
   }
 
