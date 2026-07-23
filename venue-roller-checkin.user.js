@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Venue — ROLLER Check-in Cards + Member Photos
 // @namespace    venue.roller.checkin-cards
-// @version      5.32
+// @version      5.33
 // @description  Reformats the ROLLER POS booking check-in list into full-frame photo cards, surfaces member photos on load (no Verify click), alerts when a member has no photo, handles family memberships (best-effort photos + add-name prompt) and close/similar name matches.
 // @match        https://pos.roller.app/*
 // @run-at       document-start
@@ -635,7 +635,8 @@
       '.rcz-alert__body{font:400 18px/1.32 -apple-system,Segoe UI,Roboto,sans-serif !important;}',
       'app-bip-summary:not(.rcz-skip) .summary__wrapper.rcz-alert-on button[id^="booking-details-button"] mat-icon{display:none !important;}',
       /* CASUAL (non-member) — calm grey, same card-filling layout; icon hidden */
-      '.rcz-casual{position:absolute !important;inset:0 !important;display:flex !important;flex-direction:column !important;align-items:center !important;justify-content:center !important;text-align:center !important;color:#4b5563 !important;z-index:5 !important;pointer-events:none !important;padding:16px 18px 78px !important;gap:0 !important;}',
+      '.rcz-casual{position:absolute !important;left:12px !important;bottom:12px !important;z-index:6 !important;pointer-events:none !important;}',
+      '.rcz-casual__tag{font:700 12.5px/1.2 -apple-system,Segoe UI,Roboto,sans-serif !important;color:#565d66 !important;}',
       /* big near-black NAME, then the ticket TYPE, then the small grey casual sub-line */
       '.rcz-casual__name{font:900 48px/1.02 -apple-system,Segoe UI,Roboto,sans-serif !important;color:#111827 !important;letter-spacing:.01em !important;}',
       // genuine "no name on file" placeholder: same name font, softened to grey so it reads as a system note,
@@ -739,18 +740,13 @@
   }
   function clrAlert(w) { w.classList.remove('rcz-alert-on'); var a = w.querySelector('.rcz-alert'); if (a) a.remove(); }
   function addCasual(w, name, category) {
+    // New design: casual tiles carry no centre text — the person-icon placeholder, the "No Match Required"
+    // status band, and the name in the bottom bar already say everything. We keep a small "Casual Guest"
+    // tag in the bottom-left (styled via .rcz-casual) in place of a membership tier badge.
     w.classList.add('rcz-casual-on');
     var c = w.querySelector('.rcz-casual');
     if (!c) { c = document.createElement('div'); c.className = 'rcz-casual'; w.appendChild(c); }
-    var grp = String(category || '').match(/book\s+for\s+(\d+)/i);
-    // group/package ticket -> "Group of 6"; solo ticket -> the type upper-cased (ADULT/CHILD/…)
-    var typ = grp ? CFG.CASUAL_GROUP_TYPE.replace('{N}', grp[1]) : String(category || '').toUpperCase();
-    var nameHtml = name
-      ? '<div class="rcz-casual__name">' + esc(name) + '</div>'
-      : '<div class="rcz-casual__name rcz-casual__name--none">' + esc(CFG.NO_NAME) + '</div>';
-    var html = nameHtml +
-               '<div class="rcz-casual__type">' + esc(typ) + '</div>' +
-               '<div class="rcz-casual__sub">' + esc(CFG.CASUAL_SUB) + '</div>';
+    var html = '<span class="rcz-casual__tag">Casual Guest</span>';
     if (c.getAttribute('data-h') !== html) { c.innerHTML = html; c.setAttribute('data-h', html); }
   }
   function clrCasual(w) { w.classList.remove('rcz-casual-on'); var c = w.querySelector('.rcz-casual'); if (c) c.remove(); }
