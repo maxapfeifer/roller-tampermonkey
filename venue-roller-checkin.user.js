@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Venue — ROLLER Check-in Cards + Member Photos
 // @namespace    venue.roller.checkin-cards
-// @version      5.41
+// @version      5.42
 // @description  Reformats the ROLLER POS booking check-in list into full-frame photo cards, surfaces member photos on load (no Verify click), alerts when a member has no photo, handles family memberships (best-effort photos + add-name prompt) and close/similar name matches.
 // @match        https://pos.roller.app/*
 // @match        https://*.roller.app/*
@@ -555,7 +555,7 @@
       if (mem && !CFG.SHOW_MEMBERSHIP) {                              // or leave it as ROLLER draws it
         if (!host.classList.contains('rcz-skip')) {
           host.classList.add('rcz-skip');
-          host.querySelectorAll('.rcz-alert,.rcz-casual,.rcz-mismatch,.rcz-visiting,.rcz-badge,.rcz-note,.rcz-bday,.rcz-meaning,.rcz-mem-info,.rcz-mem-name,img.rcz-photo').forEach(function (e) { e.remove(); });
+          host.querySelectorAll('.rcz-alert,.rcz-casual,.rcz-mismatch,.rcz-visiting,.rcz-badge,.rcz-note,.rcz-bday,.rcz-meaning,.rcz-status,.rcz-actreq,.rcz-botbar,.rcz-memstrip,.rcz-mem-info,.rcz-mem-name,img.rcz-photo').forEach(function (e) { e.remove(); });
           host.querySelectorAll('.rcz-alert-on,.rcz-casual-on,.rcz-mismatch-on,.rcz-visiting-on').forEach(function (w) { w.classList.remove('rcz-alert-on', 'rcz-casual-on', 'rcz-mismatch-on', 'rcz-visiting-on'); });
         }
       } else {
@@ -607,32 +607,32 @@
       /* overlays ON TOP of the photo */
       /* select checkbox hidden in the new design */
       'app-bip-summary:not(.rcz-skip) .summary__wrapper mat-checkbox.align-top--checkbox{display:none !important;}',
-      'app-bip-summary:not(.rcz-skip) .summary__wrapper .summary-detail{position:absolute !important;right:88px !important;left:auto !important;bottom:14px !important;flex:none !important;width:auto !important;max-width:44% !important;background:none !important;border:none !important;border-radius:0 !important;padding:0 !important;box-shadow:none !important;z-index:6 !important;text-align:right !important;}',
+      'app-bip-summary:not(.rcz-skip) .summary__wrapper .summary-detail{position:absolute !important;right:70px !important;left:auto !important;bottom:14px !important;flex:none !important;width:auto !important;max-width:44% !important;background:none !important;border:none !important;border-radius:0 !important;padding:0 !important;box-shadow:none !important;z-index:6 !important;text-align:right !important;}',
       'app-bip-summary:not(.rcz-skip) .summary-detail p.summary-detail__item:not(.summary-detail__item--emphasis){display:none !important;}',
       /* category ("Adult") smaller & muted; name ("Erin") larger, dark, bold */
-      'app-bip-summary:not(.rcz-skip) .summary-detail .summary-detail__item--emphasis{font-size:14px !important;font-weight:600 !important;color:#7b828c !important;margin:0 !important;line-height:1.32 !important;}',
-      'app-bip-summary:not(.rcz-skip) .summary-detail .summary-detail__item-holder-wrapper{display:block !important;font-size:14px !important;font-weight:800 !important;color:#1f2933 !important;margin-top:0 !important;line-height:1.32 !important;}',
+      'app-bip-summary:not(.rcz-skip) .summary-detail .summary-detail__item--emphasis{font-size:18px !important;font-weight:600 !important;color:#7b828c !important;margin:0 !important;line-height:1.32 !important;}',
+      'app-bip-summary:not(.rcz-skip) .summary-detail .summary-detail__item-holder-wrapper{display:block !important;font-size:18px !important;font-weight:800 !important;color:#1f2933 !important;margin-top:0 !important;line-height:1.32 !important;}',
       /* kill the empty modifiers row\'s 4px margin so the type + name lines sit flush (align with the tier) */
       'app-bip-summary:not(.rcz-skip) .summary-detail .summary-detail__modifiers{margin:0 !important;}',
       /* compress the "Select all / Hide checked in" header — trim the top gap and pull the */
       /* bottom in to ~32px (tight, but enough that ROLLER\'s verify banner clears the row) */
       '.panel__header:has(.bip-list-header){padding-top:6px !important;padding-bottom:32px !important;}',
       'app-bip-summary:not(.rcz-skip) .summary__wrapper .summary-detail-time{display:none !important;}',
-      'app-bip-summary:not(.rcz-skip) .summary__wrapper app-icon-button.align-top:has(button[id^="check-in-button"]){position:absolute !important;right:12px !important;bottom:12px !important;margin:0 !important;z-index:6 !important;}',
+      'app-bip-summary:not(.rcz-skip) .summary__wrapper app-icon-button.align-top:has(button[id^="check-in-button"]){position:absolute !important;right:12px !important;bottom:11px !important;margin:0 !important;z-index:6 !important;}',
       /* check-in button: 66px square sized to the name-label height; glyph scaled to match. Full box
          stays clickable; the shield (when on) is drawn as ::before so the whole square still taps. */
-      'app-bip-summary:not(.rcz-skip) .summary__wrapper app-icon-button.align-top:has(button[id^="check-in-button"]) button{width:66px !important;height:66px !important;min-width:66px !important;min-height:66px !important;padding:0 !important;position:relative !important;overflow:visible !important;' + (CFG.SHOW_SHIELD ? 'background:transparent !important;border:none !important;box-shadow:none !important;border-radius:0 !important;' : 'border-radius:12px !important;box-shadow:0 2px 8px rgba(0,0,0,.35) !important;') + '}',
-      'app-bip-summary:not(.rcz-skip) .summary__wrapper button[id^="check-in-button"] mat-icon{font-size:36px !important;width:36px !important;height:36px !important;line-height:36px !important;position:relative !important;z-index:1 !important;}',
+      'app-bip-summary:not(.rcz-skip) .summary__wrapper app-icon-button.align-top:has(button[id^="check-in-button"]) button{width:48px !important;height:48px !important;min-width:48px !important;min-height:48px !important;padding:0 !important;position:relative !important;overflow:visible !important;' + (CFG.SHOW_SHIELD ? 'background:transparent !important;border:none !important;box-shadow:none !important;border-radius:0 !important;' : 'border-radius:12px !important;box-shadow:0 2px 8px rgba(0,0,0,.35) !important;') + '}',
+      'app-bip-summary:not(.rcz-skip) .summary__wrapper button[id^="check-in-button"] mat-icon{font-size:26px !important;width:26px !important;height:26px !important;line-height:26px !important;position:relative !important;z-index:1 !important;}',
       /* SHIELD — reacts to ROLLER\'s own state class: theme--secondary = NOT checked in (amber "I.D."),
          theme--success = checked in (green tick). Pure CSS, so it flips the instant staff check someone in. */
-      (CFG.SHOW_SHIELD ? 'app-bip-summary:not(.rcz-skip) .summary__wrapper button[id^="check-in-button"]::before{content:"" !important;position:absolute !important;inset:0 !important;z-index:0 !important;clip-path:path("M33 3 L61 12 L61 33 C61 49 48 59 33 64 C18 59 5 49 5 33 L5 12 Z") !important;filter:drop-shadow(0 2px 3px rgba(0,0,0,.4)) !important;}' : ''),
+      (CFG.SHOW_SHIELD ? 'app-bip-summary:not(.rcz-skip) .summary__wrapper button[id^="check-in-button"]::before{content:"" !important;position:absolute !important;inset:0 !important;z-index:0 !important;clip-path:path("M24 2 L44 9 L44 24 C44 36 35 43 24 47 C13 43 4 36 4 24 L4 9 Z") !important;filter:drop-shadow(0 2px 3px rgba(0,0,0,.4)) !important;}' : ''),
       (CFG.SHOW_SHIELD ? 'app-bip-summary:not(.rcz-skip) .summary__wrapper button[id^="check-in-button"].theme--secondary::before{background:#e0a316 !important;}' : ''),
       (CFG.SHOW_SHIELD ? 'app-bip-summary:not(.rcz-skip) .summary__wrapper button[id^="check-in-button"].theme--success::before{background:#16a34a !important;}' : ''),
       (CFG.SHOW_SHIELD ? 'app-bip-summary:not(.rcz-skip) .summary__wrapper button[id^="check-in-button"].theme--secondary mat-icon{display:none !important;}' : ''),
       (CFG.SHOW_SHIELD ? '.rcz-shieldtxt{position:absolute !important;inset:0 !important;z-index:1 !important;display:none;flex-direction:column !important;align-items:center !important;justify-content:center !important;padding-bottom:6px !important;color:#fff !important;pointer-events:none !important;text-align:center !important;}' : ''),
       (CFG.SHOW_SHIELD ? 'app-bip-summary:not(.rcz-skip) button[id^="check-in-button"].theme--secondary .rcz-shieldtxt{display:flex !important;}' : ''),
-      (CFG.SHOW_SHIELD ? '.rcz-shieldtxt__id{font:400 12px/1 Roboto,Arial,sans-serif !important;letter-spacing:.02em !important;}' : ''),
-      (CFG.SHOW_SHIELD ? '.rcz-shieldtxt__sub{font:400 22px/1 Roboto,Arial,sans-serif !important;letter-spacing:0 !important;margin-top:2px !important;}' : ''),
+      (CFG.SHOW_SHIELD ? '.rcz-shieldtxt__id{font:400 9px/1 Roboto,Arial,sans-serif !important;letter-spacing:.02em !important;}' : ''),
+      (CFG.SHOW_SHIELD ? '.rcz-shieldtxt__sub{font:400 16px/1 Roboto,Arial,sans-serif !important;letter-spacing:0 !important;margin-top:1px !important;}' : ''),
       (CFG.SHOW_SHIELD ? 'app-bip-summary:not(.rcz-skip) .summary__wrapper button[id^="check-in-button"].theme--success mat-icon{color:#fff !important;margin-bottom:6px !important;}' : ''),
 
       /* ALERT (member with no photo) — fills the whole card and dominates; icon hidden */
@@ -642,7 +642,7 @@
       'app-bip-summary:not(.rcz-skip) .summary__wrapper.rcz-alert-on button[id^="booking-details-button"] mat-icon{display:none !important;}',
       /* CASUAL (non-member) — calm grey, same card-filling layout; icon hidden */
       '.rcz-casual{position:absolute !important;left:12px !important;bottom:12px !important;z-index:6 !important;pointer-events:none !important;}',
-      '.rcz-casual__tag{font:700 14px/1.32 Roboto,Arial,sans-serif !important;color:#565d66 !important;}',
+      '.rcz-casual__tag{font:700 18px/1.32 Roboto,Arial,sans-serif !important;color:#565d66 !important;}',
       /* big near-black NAME, then the ticket TYPE, then the small grey casual sub-line */
       '.rcz-casual__name{font:900 48px/1.02 Roboto,Arial,sans-serif !important;color:#111827 !important;letter-spacing:.01em !important;}',
       // genuine "no name on file" placeholder: same name font, softened to grey so it reads as a system note,
@@ -670,8 +670,8 @@
       /* membership tag, bottom-LEFT: two lines ("Membership" over the tier), dark border. */
       /* min-height 66px so the tag matches the name label + shield heights (Tom\'s "similar heights" mock) */
       '.rcz-badge{position:absolute !important;left:12px !important;right:auto !important;bottom:14px !important;z-index:6 !important;display:flex !important;flex-direction:column !important;align-items:flex-start !important;justify-content:flex-end !important;gap:0 !important;white-space:nowrap !important;text-align:left !important;pointer-events:none !important;background:none !important;border:none !important;box-shadow:none !important;padding:0 !important;}',
-      '.rcz-badge__tier{font:700 14px/1.32 Roboto,Arial,sans-serif !important;color:#2f6fed !important;}',
-      '.rcz-badge__lbl{font:700 14px/1.32 Roboto,Arial,sans-serif !important;color:#2f6fed !important;}',
+      '.rcz-badge__tier{font:700 18px/1.32 Roboto,Arial,sans-serif !important;color:#2f6fed !important;}',
+      '.rcz-badge__lbl{font:700 18px/1.32 Roboto,Arial,sans-serif !important;color:#2f6fed !important;}',
       '.rcz-badge--gold .rcz-badge__tier,.rcz-badge--gold .rcz-badge__lbl,.rcz-badge--wonder .rcz-badge__tier,.rcz-badge--wonder .rcz-badge__lbl{color:#2f6fed !important;}',
       /* link variant: base badge is pointer-events:none, so re-enable clicks + show it is tappable */
       '.rcz-badge--link{pointer-events:auto !important;cursor:pointer !important;text-decoration:none !important;transition:filter .1s,box-shadow .1s !important;}',
@@ -708,24 +708,26 @@
       '.rcz-mem-info__hd{font:900 22px/1.15 Roboto,Arial,sans-serif !important;color:#111827 !important;margin-bottom:3px !important;}',
       '.rcz-mem-info__row{font:700 15px/1.45 Roboto,Arial,sans-serif !important;color:#374151 !important;}',
       '.rcz-mem-info__row b{font-weight:900 !important;color:#111827 !important;}',
-      '.rcz-mem-name{position:absolute !important;right:92px !important;bottom:12px !important;z-index:6 !important;display:flex !important;flex-direction:column !important;justify-content:center !important;min-height:66px !important;box-sizing:border-box !important;white-space:nowrap !important;background:#fff !important;border:1px solid #ececec !important;border-radius:12px !important;padding:7px 12px !important;box-shadow:0 2px 8px rgba(0,0,0,.35) !important;}',
-      '.rcz-mem-name__cat{font-size:15px !important;font-weight:700 !important;color:#6b7280 !important;}',
-      '.rcz-mem-name__nm{font-size:22px !important;font-weight:900 !important;color:#1f2933 !important;line-height:1.1 !important;margin-top:1px !important;}',
+      '.rcz-mem-name{position:absolute !important;right:70px !important;bottom:14px !important;z-index:6 !important;display:flex !important;flex-direction:column !important;align-items:flex-end !important;justify-content:flex-end !important;white-space:nowrap !important;background:none !important;border:none !important;box-shadow:none !important;padding:0 !important;text-align:right !important;pointer-events:none !important;}',
+      '.rcz-mem-name__cat{font:600 18px/1.32 Roboto,Arial,sans-serif !important;color:#7b828c !important;}',
+      '.rcz-mem-name__nm{font:800 18px/1.32 Roboto,Arial,sans-serif !important;color:#1f2933 !important;margin-top:0 !important;}',
+      '.rcz-memstrip{position:absolute !important;left:0 !important;right:0 !important;bottom:70px !important;z-index:5 !important;pointer-events:none !important;background:#1f2429 !important;color:#fff !important;font:800 12px/1 Roboto,Arial,sans-serif !important;letter-spacing:.06em !important;text-align:center !important;padding:7px 8px !important;}',
       /* STATUS BAND — Name:/Photo: readout across the top of the tile (grey = fine, red = needs action) */
-      '.rcz-status{position:absolute !important;top:0 !important;left:0 !important;right:0 !important;z-index:6 !important;pointer-events:none !important;background:rgba(255,255,255,.55) !important;-webkit-backdrop-filter:blur(6px) !important;backdrop-filter:blur(6px) !important;border-bottom:1px solid rgba(0,0,0,.07) !important;padding:8px 11px !important;font:400 12.5px/1.3 Roboto,Arial,sans-serif !important;color:#1f2933 !important;}',
-      '.rcz-status__row{display:flex !important;gap:4px !important;}',
-      '.rcz-status__lbl{color:#7b828c !important;}',
-      '.rcz-status__ok{color:#8b929b !important;}',
+      '.rcz-status{position:absolute !important;top:0 !important;left:0 !important;right:0 !important;z-index:6 !important;pointer-events:none !important;background:rgba(255,255,255,.55) !important;-webkit-backdrop-filter:blur(6px) !important;backdrop-filter:blur(6px) !important;border-bottom:1px solid rgba(0,0,0,.07) !important;padding:8px 11px 5px 11px !important;font:400 12.5px/1.3 Roboto,Arial,sans-serif !important;color:#1f2933 !important;}',
+      '.rcz-status__row{display:flex !important;gap:4px !important;align-items:center !important;}',
+      '.rcz-status__lbl{color:#1f2933 !important;}',
+      '.rcz-status__ok{color:#1f2933 !important;}',
       '.rcz-status__warn{color:#e5231b !important;}',
+      '.rcz-status__tick{color:#8b929b !important;font-weight:700 !important;margin-left:5px !important;}',
       /* FROSTED BOTTOM BAR — unified translucent band behind tier / name / shield */
-      '.rcz-botbar{position:absolute !important;left:0 !important;right:0 !important;bottom:0 !important;height:90px !important;z-index:4 !important;pointer-events:none !important;background:rgba(255,255,255,.55) !important;-webkit-backdrop-filter:blur(6px) !important;backdrop-filter:blur(6px) !important;border-top:1px solid rgba(0,0,0,.07) !important;}',
+      '.rcz-botbar{position:absolute !important;left:0 !important;right:0 !important;bottom:0 !important;height:70px !important;z-index:4 !important;pointer-events:none !important;background:rgba(255,255,255,.55) !important;-webkit-backdrop-filter:blur(6px) !important;backdrop-filter:blur(6px) !important;border-top:1px solid rgba(0,0,0,.07) !important;}',
       /* top overlays sit clear of the status band */
       'app-bip-summary:not(.rcz-skip) .summary__wrapper.rcz-alert-on .rcz-alert,app-bip-summary:not(.rcz-skip) .summary__wrapper.rcz-mismatch-on .rcz-mismatch{padding-top:52px !important;}',
       '.rcz-note{top:47px !important;}',
       /* LOCKED shield — dim + block the check-in button until staff action a prompt */
       'app-bip-summary:not(.rcz-skip) .summary__wrapper.rcz-locked button[id^="check-in-button"]{pointer-events:none !important;opacity:.34 !important;filter:grayscale(.7) !important;}',
       /* ACTION REQUIRED prompt — frosted banner with tappable links */
-      '.rcz-actreq{position:absolute !important;left:12px !important;right:12px !important;bottom:88px !important;z-index:6 !important;pointer-events:none !important;background:rgba(255,255,255,.86) !important;-webkit-backdrop-filter:blur(4px) !important;backdrop-filter:blur(4px) !important;border-radius:11px !important;padding:9px 12px 10px !important;box-shadow:0 2px 9px rgba(0,0,0,.17) !important;text-align:center !important;}',
+      '.rcz-actreq{position:absolute !important;left:50% !important;right:auto !important;transform:translateX(-50%) !important;max-width:calc(100% - 24px) !important;bottom:76px !important;z-index:6 !important;pointer-events:none !important;background:rgba(255,255,255,.86) !important;-webkit-backdrop-filter:blur(4px) !important;backdrop-filter:blur(4px) !important;border-radius:11px !important;padding:9px 16px 10px !important;box-shadow:0 2px 9px rgba(0,0,0,.17) !important;text-align:center !important;}',
       '.rcz-actreq__hd{font:800 13px/1.1 Roboto,Arial,sans-serif !important;letter-spacing:.05em !important;color:#e5231b !important;}',
       '.rcz-actreq__links{display:flex !important;gap:16px !important;justify-content:center !important;margin-top:5px !important;flex-wrap:wrap !important;}',
       '.rcz-actreq a,.rcz-addlink{color:#2f6fed !important;text-decoration:underline !important;text-underline-offset:2px !important;pointer-events:auto !important;cursor:pointer !important;font:700 12px/1 Roboto,Arial,sans-serif !important;}',
@@ -964,8 +966,9 @@
   function paintStatus(w, nm, nmW, ph, phW) {
     var el = w.querySelector('.rcz-status');
     if (!el) { el = document.createElement('div'); el.className = 'rcz-status'; w.appendChild(el); }
-    var html = '<div class="rcz-status__row"><span class="rcz-status__lbl">Name:</span><span class="' + (nmW ? 'rcz-status__warn' : 'rcz-status__ok') + '">' + esc(nm) + '</span></div>' +
-               '<div class="rcz-status__row"><span class="rcz-status__lbl">Photo:</span><span class="' + (phW ? 'rcz-status__warn' : 'rcz-status__ok') + '">' + esc(ph) + '</span></div>';
+    function tk(v) { return (v === 'Matched' || v === 'Showing') ? '<span class="rcz-status__tick">✓</span>' : ''; }
+    var html = '<div class="rcz-status__row"><span class="rcz-status__lbl">Name:</span><span class="' + (nmW ? 'rcz-status__warn' : 'rcz-status__ok') + '">' + esc(nm) + '</span>' + tk(nm) + '</div>' +
+               '<div class="rcz-status__row"><span class="rcz-status__lbl">Photo:</span><span class="' + (phW ? 'rcz-status__warn' : 'rcz-status__ok') + '">' + esc(ph) + '</span>' + tk(ph) + '</div>';
     if (el.getAttribute('data-h') !== html) { el.innerHTML = html; el.setAttribute('data-h', html); }
   }
   function clrStatus(w) { var el = w.querySelector('.rcz-status'); if (el) el.remove(); }
@@ -1017,22 +1020,20 @@
         if (img.getAttribute('src') !== src) img.setAttribute('src', src);
       }
     }
-    clrAlert(w); clrCasual(w); clrMismatch(w); clrVisiting(w); clrNote(w); clrBirthday(w);
+    clrAlert(w); clrCasual(w); clrMismatch(w); clrVisiting(w); clrNote(w); clrActionReq(w);
     var info = membershipInfo(host);
-    var start = parseCardDate(info.date);
-    var endStr = start ? fmtCardDate(addDays(start, CFG.MEM_VALID_DAYS)) : '—';
-    addMemInfo(w, info.date || '—', endStr, info.uses || '');  // uses (e.g. "1 uses") goes in the heading
+    ensureBotBar(w);
+    var mHasPhoto = !!w.querySelector('img.rcz-photo');
+    paintStatus(w, 'Matched', false, mHasPhoto ? 'Showing' : 'Required Today', !mHasPhoto);
+    addMemStrip(w, info.uses);                                       // dark "MEMBERSHIP: N USES" strip
     addBadge(w, membershipTier(host));
     addMemName(w, info.type, info.first);
-    // Birthday flag — exact same logic/animation as tickets. The "Membership Found" panel occupies the
-    // top of the card, so drop the cake below it (rather than the top-right corner used on ticket cards).
+    var oldPanel = w.querySelector('.rcz-mem-info'); if (oldPanel) oldPanel.remove();  // drop old Starts/Ends panel
+    // Birthday flag — top-right, same as ticket cards
     var memCardId = btn ? btn.id.replace('booking-details-button-', '') : null;
     var mbm = memCardId ? state.birthdays[memCardId] : null;
-    if (CFG.SHOW_BIRTHDAY && mbm && birthdayInWindow(mbm)) {
-      addBirthday(w, mbm);
-      var mbd = w.querySelector('.rcz-bday'), mnfo = w.querySelector('.rcz-mem-info');
-      if (mbd) mbd.style.top = (mnfo && mnfo.offsetHeight) ? (mnfo.offsetTop + mnfo.offsetHeight + 10) + 'px' : '12px';
-    } else clrBirthday(w);
+    if (CFG.SHOW_BIRTHDAY && mbm && birthdayInWindow(mbm)) { addBirthday(w, mbm); var mbd = w.querySelector('.rcz-bday'); if (mbd) mbd.style.top = '12px'; }
+    else clrBirthday(w);
   }
   function addMemInfo(w, startStr, endStr, uses) {
     var el = w.querySelector('.rcz-mem-info');
@@ -1048,13 +1049,19 @@
     var html = '<div class="rcz-mem-name__cat">' + esc(type || 'Member') + '</div><div class="rcz-mem-name__nm">' + esc(first || '') + '</div>';
     if (el.getAttribute('data-h') !== html) { el.innerHTML = html; el.setAttribute('data-h', html); }
   }
+  function addMemStrip(w, uses) {
+    var el = w.querySelector('.rcz-memstrip');
+    if (!el) { el = document.createElement('div'); el.className = 'rcz-memstrip'; w.appendChild(el); }
+    var html = 'MEMBERSHIP' + (uses ? ': ' + esc(String(uses).toUpperCase()) : '');
+    if (el.getAttribute('data-h') !== html) { el.innerHTML = html; el.setAttribute('data-h', html); }
+  }
 
   function render() {
     try {
       if (!activeRoute()) {
         // not the booking check-in list -> strip our styling/overlays so ROLLER's native pages work
         var st = document.getElementById('rcz-style'); if (st) st.remove();
-        document.querySelectorAll('.rcz-alert, .rcz-casual, .rcz-mismatch, .rcz-visiting, .rcz-badge, .rcz-note, .rcz-bday, .rcz-meaning, .rcz-status, .rcz-actreq, .rcz-botbar, .rcz-mem-info, .rcz-mem-name, img.rcz-photo').forEach(function (e) { e.remove(); });
+        document.querySelectorAll('.rcz-alert, .rcz-casual, .rcz-mismatch, .rcz-visiting, .rcz-badge, .rcz-note, .rcz-bday, .rcz-meaning, .rcz-status, .rcz-actreq, .rcz-botbar, .rcz-mem-info, .rcz-mem-name, .rcz-memstrip, img.rcz-photo').forEach(function (e) { e.remove(); });
         document.querySelectorAll('.rcz-alert-on, .rcz-casual-on, .rcz-mismatch-on, .rcz-visiting-on, .rcz-locked').forEach(function (w) { w.classList.remove('rcz-alert-on', 'rcz-casual-on', 'rcz-mismatch-on', 'rcz-visiting-on', 'rcz-locked'); });
         document.querySelectorAll('app-bip-summary.rcz-mem, app-bip-summary.rcz-skip').forEach(function (h) { h.classList.remove('rcz-mem', 'rcz-skip'); });
         document.querySelectorAll('app-bip-summary:not(.rcz-skip) button[id^="booking-details-button-"] mat-icon').forEach(function (ic) { ic.style.display = ''; });
