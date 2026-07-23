@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Venue — ROLLER Check-in Cards + Member Photos
 // @namespace    venue.roller.checkin-cards
-// @version      5.40
+// @version      5.41
 // @description  Reformats the ROLLER POS booking check-in list into full-frame photo cards, surfaces member photos on load (no Verify click), alerts when a member has no photo, handles family memberships (best-effort photos + add-name prompt) and close/similar name matches.
 // @match        https://pos.roller.app/*
 // @match        https://*.roller.app/*
@@ -612,6 +612,8 @@
       /* category ("Adult") smaller & muted; name ("Erin") larger, dark, bold */
       'app-bip-summary:not(.rcz-skip) .summary-detail .summary-detail__item--emphasis{font-size:14px !important;font-weight:600 !important;color:#7b828c !important;margin:0 !important;line-height:1.32 !important;}',
       'app-bip-summary:not(.rcz-skip) .summary-detail .summary-detail__item-holder-wrapper{display:block !important;font-size:14px !important;font-weight:800 !important;color:#1f2933 !important;margin-top:0 !important;line-height:1.32 !important;}',
+      /* kill the empty modifiers row\'s 4px margin so the type + name lines sit flush (align with the tier) */
+      'app-bip-summary:not(.rcz-skip) .summary-detail .summary-detail__modifiers{margin:0 !important;}',
       /* compress the "Select all / Hide checked in" header — trim the top gap and pull the */
       /* bottom in to ~32px (tight, but enough that ROLLER\'s verify banner clears the row) */
       '.panel__header:has(.bip-list-header){padding-top:6px !important;padding-bottom:32px !important;}',
