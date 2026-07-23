@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Venue — ROLLER Check-in Cards + Member Photos
 // @namespace    venue.roller.checkin-cards
-// @version      5.20
+// @version      5.22
 // @description  Reformats the ROLLER POS booking check-in list into full-frame photo cards, surfaces member photos on load (no Verify click), alerts when a member has no photo, handles family memberships (best-effort photos + add-name prompt) and close/similar name matches.
 // @match        https://pos.roller.app/*
 // @run-at       document-start
@@ -137,6 +137,7 @@
     byCard:       {},   // cardId(bookingItemPartId) -> {member, pending, photo}
     discountIndex:{},   // memberBookingItemPartId -> {name, cardId}  (Verify-click fallback)
     birthdays:    {},   // cardId(bookingItemPartId) -> month number 1-12 (from Ticket Holder Details form)
+    formNames:    {},   // cardId(bookingItemPartId) -> first name (from Ticket Holder Details form) when the ticket's own name is blank
     formsSeen:    {}    // rollerFormResponseId -> true (so we fetch each form's answers only once)
   };
 
@@ -344,7 +345,7 @@
       state.byCard = next;
       render();
       toFetch.forEach(fetchMembership);
-      if (CFG.SHOW_BIRTHDAY) fetchForms(j);
+      fetchForms(j); // Ticket Holder Details form — supplies birthday month AND a fallback name for blank-named tickets
     } catch (e) {}
   }
 
@@ -373,14 +374,31 @@
       var def = f.formJson ? JSON.parse(f.formJson) : null;
       var resp = f.formResponseJson ? JSON.parse(f.formResponseJson) : null;
       if (!def || !resp) return;
-      var dobId = null;
-      (function walk(items) { (items || []).forEach(function (it) { if (it && it.dataBinding === 'Booking.TicketHolder.DOB') dobId = it.id; if (it && it.items) walk(it.items); }); })(def.items);
-      if (!dobId) return;
+      // Collect every field so we can find the DOB (month) and a first-name field, wherever they sit.
+      var dobId = null, fields = [];
+      (function walk(items) {
+        (items || []).forEach(function (it) {
+          if (!it) return;
+          var db = String(it.dataBinding || '');
+          if (db === 'Booking.TicketHolder.DOB') dobId = it.id;
+          fields.push({ id: it.id, db: db, title: String(it.title || it.label || it.text || it.name || '') });
+          if (it.items) walk(it.items);
+        });
+      })(def.items);
+      // Pick the name field by priority: TicketHolder.FirstName -> any "first name" -> a general Name/FullName (first word)
+      function pick(test) { for (var i = 0; i < fields.length; i++) { if (fields[i].id != null && test(fields[i])) return fields[i]; } return null; }
+      var nf = pick(function (c) { return /TicketHolder\.FirstName$/i.test(c.db); })
+            || pick(function (c) { return /first\s*name/i.test(c.db) || /first\s*name/i.test(c.title); })
+            || pick(function (c) { return /TicketHolder\.(Full)?Name$/i.test(c.db) || /^full\s*name$|^name$/i.test(c.title); });
+      var nameId = nf ? nf.id : null;
+      var nameFirstWord = nf ? !/first/i.test(nf.db + ' ' + nf.title) : false; // full-name field -> keep only the first word
       (resp.items || []).forEach(function (g) {
         var part = String(g.uniqueGroupId || '').split('-')[1]; if (!part) return;
-        var month = null;
-        (g.items || []).forEach(function (si) { if (si && si.id === dobId && si.answer && si.answer.length) month = Number(si.answer[0]); });
-        if (month >= 1 && month <= 12) state.birthdays[part] = month;
+        (g.items || []).forEach(function (si) {
+          if (!si || !si.answer || !si.answer.length) return;
+          if (dobId != null && si.id === dobId) { var month = Number(si.answer[0]); if (month >= 1 && month <= 12) state.birthdays[part] = month; }
+          if (nameId != null && si.id === nameId) { var v = String(si.answer[0] || '').trim(); if (v) { if (nameFirstWord) v = v.split(/\s+/)[0]; state.formNames[part] = proper(v); } }
+        });
       });
     } catch (e) {}
   }
@@ -567,8 +585,9 @@
       '.rcz-mismatch__hd{font:900 48px/1 -apple-system,Segoe UI,Roboto,sans-serif !important;letter-spacing:.02em !important;}',
       '.rcz-mismatch__note{font:400 18px/1.32 -apple-system,Segoe UI,Roboto,sans-serif !important;margin-top:10px !important;max-width:94% !important;}',
       '.rcz-mismatch__note b{font-weight:400 !important;}',
-      /* member photo shown behind the mismatch text -> a translucent white veil keeps the red legible while the face stays visible */
-      '.rcz-mismatch--onphoto{background:rgba(255,255,255,.5) !important;}',
+      /* member photo behind the mismatch text -> keep the FACE clearly visible; the warning is only a light
+         semi-transparent reminder (a soft white wash + reduced opacity) so staff still see to verify the name */
+      '.rcz-mismatch--onphoto{background:rgba(255,255,255,.3) !important;opacity:.72 !important;}',
       'app-bip-summary:not(.rcz-skip) .summary__wrapper.rcz-mismatch-on button[id^="booking-details-button"] mat-icon{display:none !important;}',
       /* VISITING (member from another museum, no photo) — red, card-filling; icon hidden */
       '.rcz-visiting{position:absolute !important;inset:0 !important;display:flex !important;flex-direction:column !important;align-items:center !important;justify-content:center !important;text-align:center !important;color:#e5231b !important;z-index:5 !important;pointer-events:none !important;padding:16px 18px 78px !important;gap:10px !important;}',
@@ -633,14 +652,17 @@
       if (p.textContent.trim() !== sh) p.textContent = sh;
     });
   }
-  function addAlert(w) {
+  function addAlert(w, href) {
     w.classList.add('rcz-alert-on');
-    if (!w.querySelector('.rcz-alert')) {
-      var a = document.createElement('div'); a.className = 'rcz-alert';
+    var a = w.querySelector('.rcz-alert');
+    if (!a) {
+      a = document.createElement('div'); a.className = 'rcz-alert';
       a.innerHTML = '<div class="rcz-alert__hd">' + CFG.ALERT_LINES[0] + '</div>' +
                     '<div class="rcz-alert__body">' + CFG.ALERT_LINES[1] + '</div>';
       w.appendChild(a);
     }
+    // clicking the alert box goes to this member's membership detail (NOT the ticket-holder tile behind it)
+    if (href) a.setAttribute('data-rcz-href', href); else a.removeAttribute('data-rcz-href');
   }
   function clrAlert(w) { w.classList.remove('rcz-alert-on'); var a = w.querySelector('.rcz-alert'); if (a) a.remove(); }
   function addCasual(w, name, category) {
@@ -735,6 +757,14 @@
     var lm = state.memLinks; if (!lm) return null;
     var k = String((info && info.memberFull) || '').replace(/\s+/g, ' ').trim().toLowerCase();
     return k && lm[k] ? lm[k] : null;
+  }
+  // Holder name for a card: ROLLER's own label if present, else the name captured in the Ticket Holder
+  // Details form (some bookings leave the ticket's name blank but collect it in that form, e.g. children
+  // added to a parent's booking, or an adult whose name only went into the form).
+  function holderNameFor(w, cardId) {
+    var t = ((w.querySelector('.summary-detail__item-holder-wrapper') || {}).textContent || '').trim();
+    if (!t && cardId && state.formNames[cardId]) t = state.formNames[cardId];
+    return t;
   }
   // ROLLER draws the member's own photo in the avatar button as <img> with a "/ticket/..." CDN src when
   // one is on file. Our membership API lookup occasionally returns no imageFileName even though ROLLER
@@ -895,7 +925,7 @@
           // raise the alarming red NAME MIS-MATCH — present a normal casual booking tile, keeping the
           // reassurance banner up top to explain why they carry a member discount.
           if (img) img.remove();
-          var xnm = ((w.querySelector('.summary-detail__item-holder-wrapper') || {}).textContent || '').trim();
+          var xnm = holderNameFor(w, cardId);
           var xcat = ((w.querySelector('.summary-detail__item--emphasis') || {}).textContent || '').trim();
           addCasual(w, xnm, xcat); clrAlert(w); clrMismatch(w); clrVisiting(w); clrBadge(w);
           addNote(w, 'misaligned');
@@ -933,12 +963,12 @@
           } else {
             // matched member, genuinely no photo on file -> "requires photo" alert
             if (img) img.remove();
-            addAlert(w); clrCasual(w); clrMismatch(w); clrVisiting(w); clrNote(w); if (info.tier) addBadge(w, info.tier, memHref(info)); else clrBadge(w);
+            addAlert(w, memHref(info)); clrCasual(w); clrMismatch(w); clrVisiting(w); clrNote(w); if (info.tier) addBadge(w, info.tier, memHref(info)); else clrBadge(w);
           }
         } else if (info && !info.pending && info.member === false) {
           // casual (non-member) -> big guest name heading + "Casual <type> Booking" + sub-line
           if (img) img.remove();
-          var cnm = ((w.querySelector('.summary-detail__item-holder-wrapper') || {}).textContent || '').trim();
+          var cnm = holderNameFor(w, cardId);
           var ccat = ((w.querySelector('.summary-detail__item--emphasis') || {}).textContent || '').trim();
           addCasual(w, cnm, ccat); clrAlert(w); clrMismatch(w); clrVisiting(w); clrNote(w); clrBadge(w);
         } else {
@@ -972,27 +1002,39 @@
   // so it navigates in-app (fast, no reload). To match that, intercept a normal left-click on our tier
   // link and forward it to the matching blue pill — reusing ROLLER's router for a soft SPA navigation.
   // Modifier/middle clicks and new-tab mode are left alone so "open in new tab" still works.
+  // forward a click to ROLLER's own blue member-pill for that href (soft in-app nav). returns true if done.
+  function forwardToPill(href) {
+    if (!href) return false;
+    var pills = document.querySelectorAll('a[id^="membership-discount-link-"]');
+    for (var i = 0; i < pills.length; i++) { if (pills[i].getAttribute('href') === href) { pills[i].click(); return true; } }
+    return false;
+  }
   function installBadgeLinkNav() {
     if (window.__rczBadgeNav) return; window.__rczBadgeNav = true;
     document.addEventListener('click', function (ev) {
       try {
-        var badge = ev.target && ev.target.closest ? ev.target.closest('a.rcz-badge--link') : null;
-        if (!badge || ev.defaultPrevented) return;
+        if (ev.defaultPrevented) return;
         if (ev.button !== 0 || ev.metaKey || ev.ctrlKey || ev.shiftKey || ev.altKey) return; // let new-tab etc. through
-        if (badge.getAttribute('target') === '_blank') return;
-        var href = badge.getAttribute('href');
-        // 1) preferred: a matching blue member-pill exists -> hand off to ROLLER's routerLink (soft nav
-        //    straight to the membership detail, the exact URL of the blue link)
-        if (href) {
-          var pills = document.querySelectorAll('a[id^="membership-discount-link-"]'), roller = null;
-          for (var i = 0; i < pills.length; i++) { if (pills[i].getAttribute('href') === href) { roller = pills[i]; break; } }
-          if (roller) { ev.preventDefault(); roller.click(); return; }
+        // A) the tier badge link -> membership detail, else fall back to the card's tile
+        var badge = ev.target && ev.target.closest ? ev.target.closest('a.rcz-badge--link') : null;
+        if (badge) {
+          if (badge.getAttribute('target') === '_blank') return;
+          var href = badge.getAttribute('href');
+          if (href && forwardToPill(href)) { ev.preventDefault(); return; }
+          var host = badge.closest ? badge.closest('app-bip-summary') : null;
+          var tile = host ? host.querySelector('button[id^="booking-details-button-"]') : null;
+          if (tile) { ev.preventDefault(); tile.click(); }
+          return;
         }
-        // 2) fallback (no blue pill, e.g. non-membership discounts or membership search cards): click the
-        //    card's own tile — ROLLER's built-in navigation to the same detail. Also a soft, in-app nav.
-        var host = badge.closest ? badge.closest('app-bip-summary') : null;
-        var tile = host ? host.querySelector('button[id^="booking-details-button-"]') : null;
-        if (tile) { ev.preventDefault(); tile.click(); }
+        // B) on a "PHOTO REQUIRED NOW" card, clicking the middle (the avatar tile behind the alert) should
+        //    go to the membership detail, NOT ROLLER's ticket-holder page. The alert is pointer-transparent,
+        //    so the click lands on the tile; if this card is showing the alert, reroute it to the membership.
+        var tileBtn = ev.target && ev.target.closest ? ev.target.closest('button[id^="booking-details-button-"]') : null;
+        if (tileBtn) {
+          var ahost = tileBtn.closest('app-bip-summary');
+          var alertEl = ahost ? ahost.querySelector('.rcz-alert[data-rcz-href]') : null;
+          if (alertEl) { ev.preventDefault(); forwardToPill(alertEl.getAttribute('data-rcz-href')); return; }
+        }
       } catch (e) {}
     }, true);
   }
