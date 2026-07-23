@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Venue — ROLLER Check-in Cards + Member Photos
 // @namespace    venue.roller.checkin-cards
-// @version      5.29
+// @version      5.30
 // @description  Reformats the ROLLER POS booking check-in list into full-frame photo cards, surfaces member photos on load (no Verify click), alerts when a member has no photo, handles family memberships (best-effort photos + add-name prompt) and close/similar name matches.
 // @match        https://pos.roller.app/*
 // @run-at       document-start
@@ -73,8 +73,8 @@
     SHOW_BIRTHDAY:     true,  // flag birthdays falling in last / this / next calendar month
     BIRTHDAY_ANIMATE:  true,  // animate the cake (bounce) + a small confetti burst
     SHOW_SHIELD:       true,  // reshape the check-in button into an I.D. shield: amber "I.D." -> green tick
-    SHIELD_LABEL:      'I.D.',
-    SHIELD_SUB:        'Checkin',   // small line under "I.D." on the shield
+    SHIELD_LABEL:      'Confirm',
+    SHIELD_SUB:        'I.D.',   // shield reads "Confirm" (small top) over "I.D." (big bottom)
     // ---- membership search results ----
     SHOW_MEMBERSHIP:   true,  // format membership results (photo + "Membership Found" panel). false = leave as ROLLER draws them
     MEM_TITLE:         'Membership Found',
@@ -601,7 +601,8 @@
       'app-bip-summary:not(.rcz-skip) button[id^="booking-details-button"] mat-icon{font-size:' + CFG.PLACEHOLDER_ICON_PX + 'px !important;width:' + CFG.PLACEHOLDER_ICON_PX + 'px !important;height:' + CFG.PLACEHOLDER_ICON_PX + 'px !important;line-height:' + CFG.PLACEHOLDER_ICON_PX + 'px !important;color:#9aa2ac !important;}',
 
       /* overlays ON TOP of the photo */
-      'app-bip-summary:not(.rcz-skip) .summary__wrapper mat-checkbox.align-top--checkbox{position:absolute !important;top:12px !important;left:12px !important;z-index:6 !important;margin:0 !important;background:rgba(255,255,255,.85) !important;border-radius:6px !important;padding:2px !important;}',
+      /* select checkbox hidden in the new design */
+      'app-bip-summary:not(.rcz-skip) .summary__wrapper mat-checkbox.align-top--checkbox{display:none !important;}',
       'app-bip-summary:not(.rcz-skip) .summary__wrapper .summary-detail{position:absolute !important;right:92px !important;left:auto !important;bottom:12px !important;flex:none !important;width:auto !important;max-width:44% !important;background:#fff !important;border:1px solid #ececec !important;border-radius:12px !important;padding:7px 12px !important;box-shadow:0 2px 8px rgba(0,0,0,.35) !important;z-index:6 !important;}',
       'app-bip-summary:not(.rcz-skip) .summary-detail p.summary-detail__item:not(.summary-detail__item--emphasis){display:none !important;}',
       /* category ("Adult") smaller & muted; name ("Erin") larger, dark, bold */
@@ -624,8 +625,8 @@
       (CFG.SHOW_SHIELD ? 'app-bip-summary:not(.rcz-skip) .summary__wrapper button[id^="check-in-button"].theme--secondary mat-icon{display:none !important;}' : ''),
       (CFG.SHOW_SHIELD ? '.rcz-shieldtxt{position:absolute !important;inset:0 !important;z-index:1 !important;display:none;flex-direction:column !important;align-items:center !important;justify-content:center !important;padding-bottom:6px !important;color:#fff !important;pointer-events:none !important;text-align:center !important;}' : ''),
       (CFG.SHOW_SHIELD ? 'app-bip-summary:not(.rcz-skip) button[id^="check-in-button"].theme--secondary .rcz-shieldtxt{display:flex !important;}' : ''),
-      (CFG.SHOW_SHIELD ? '.rcz-shieldtxt__id{font:900 21px/1 -apple-system,Segoe UI,Roboto,sans-serif !important;letter-spacing:.02em !important;}' : ''),
-      (CFG.SHOW_SHIELD ? '.rcz-shieldtxt__sub{font:900 13px/1.05 -apple-system,Segoe UI,Roboto,sans-serif !important;letter-spacing:0 !important;margin-top:1px !important;}' : ''),
+      (CFG.SHOW_SHIELD ? '.rcz-shieldtxt__id{font:400 12px/1 -apple-system,Segoe UI,Roboto,sans-serif !important;letter-spacing:.02em !important;}' : ''),
+      (CFG.SHOW_SHIELD ? '.rcz-shieldtxt__sub{font:400 22px/1 -apple-system,Segoe UI,Roboto,sans-serif !important;letter-spacing:0 !important;margin-top:2px !important;}' : ''),
       (CFG.SHOW_SHIELD ? 'app-bip-summary:not(.rcz-skip) .summary__wrapper button[id^="check-in-button"].theme--success mat-icon{color:#fff !important;margin-bottom:6px !important;}' : ''),
 
       /* ALERT (member with no photo) — fills the whole card and dominates; icon hidden */
@@ -685,7 +686,7 @@
       /* top set inline (default 12px) so it can be pushed below a top note banner when one is present */
       '.rcz-bday{position:absolute !important;right:12px !important;z-index:7 !important;display:flex !important;flex-direction:column !important;align-items:center !important;gap:0 !important;pointer-events:none !important;background:rgba(255,255,255,.93) !important;border-radius:13px !important;padding:6px 10px 5px !important;box-shadow:0 2px 8px rgba(0,0,0,.3) !important;}',
       '.rcz-bday__cake{font-size:36px !important;line-height:1 !important;display:inline-block !important;transform-origin:50% 90% !important;animation:rczCake 1.8s ease-in-out infinite !important;}',
-      '.rcz-bday__m{font:900 12px/1.1 -apple-system,Segoe UI,Roboto,sans-serif !important;color:#b4308f !important;letter-spacing:.02em !important;margin-top:2px !important;}',
+      '.rcz-bday__m{font:900 13px/1.1 -apple-system,Segoe UI,Roboto,sans-serif !important;color:#b4308f !important;letter-spacing:.03em !important;margin-top:2px !important;}',
       '@keyframes rczCake{0%,100%{transform:translateY(0) rotate(0)}20%{transform:translateY(-3px) rotate(-9deg)}45%{transform:translateY(0) rotate(0)}70%{transform:translateY(-2px) rotate(9deg)}}',
       /* opacity intentionally NOT !important — an !important value cannot be animated, which would */
       /* freeze the confetti invisible; the keyframe drives opacity from 0 up and back to 0. */
@@ -928,7 +929,7 @@
                ['#7bd67b', 8, 86, '170deg', 0.15], ['#b98bff', -46, 64, '70deg', 0.9], ['#ff9f4d', -18, 44, '-70deg', 0.5]];
       for (var i = 0; i < P.length; i++) { var p = P[i]; conf += '<i class="rcz-bday__c" style="background:' + p[0] + ';--dx:' + p[1] + 'px;--dy:' + p[2] + 'px;--r:' + p[3] + ';animation-delay:' + p[4] + 's"></i>'; }
     }
-    var html = '<span class="rcz-bday__cake">🎂</span><span class="rcz-bday__m">' + esc(monthName(m)) + '</span>' + conf;
+    var html = '<span class="rcz-bday__cake">🎂</span><span class="rcz-bday__m">' + esc(monthName(m).slice(0, 3).toUpperCase()) + '</span>' + conf;
     if (el.getAttribute('data-h') !== html) { el.innerHTML = html; el.setAttribute('data-h', html); }
   }
   function clrBirthday(w) { var el = w.querySelector('.rcz-bday'); if (el) el.remove(); }
@@ -1053,9 +1054,10 @@
           var note = esc(CFG.MISMATCH_NOTE_TMPL).split('{MEMBER}').join(mem).split('{TICKET}').join(tk);
           addMismatch(w, note, !!info.photo); clrAlert(w); clrCasual(w); clrVisiting(w); clrNote(w); if (info.tier) addBadge(w, info.tier, memHref(info)); else clrBadge(w);
         } else if (info && !info.pending && info.visiting) {
-          // member visiting from another museum, no photo -> "photo essential" alert
+          // visiting overlay dropped from the redesign — a visiting member with no photo is treated
+          // like any other no-photo member (standard "requires photo" alert), no "visiting" banner.
           if (img) img.remove();
-          addVisiting(w); clrAlert(w); clrCasual(w); clrMismatch(w); clrNote(w); if (info.tier) addBadge(w, info.tier, memHref(info)); else clrBadge(w);
+          addAlert(w, memHref(info)); clrCasual(w); clrMismatch(w); clrVisiting(w); clrNote(w); if (info.tier) addBadge(w, info.tier, memHref(info)); else clrBadge(w);
         } else if (info && !info.pending && info.member) {
           var np = nativePhotoImg(btn);
           if (np) {
