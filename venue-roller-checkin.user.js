@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Venue — ROLLER Check-in Cards + Member Photos
 // @namespace    venue.roller.checkin-cards
-// @version      5.25
+// @version      5.26
 // @description  Reformats the ROLLER POS booking check-in list into full-frame photo cards, surfaces member photos on load (no Verify click), alerts when a member has no photo, handles family memberships (best-effort photos + add-name prompt) and close/similar name matches.
 // @match        https://pos.roller.app/*
 // @run-at       document-start
@@ -28,6 +28,10 @@
     // show "Group of 6". {N} filled at render time.
     CASUAL_SUB:        'CASUAL BOOKING (NO PHOTO REQUIRED)',
     CASUAL_GROUP_TYPE: 'Group of {N}',
+    // Shown in the name slot when a ticket genuinely has no holder name anywhere (blank on the ticket AND
+    // absent from the Ticket Holder Details form) — e.g. a child added at the door and never named. Sentence
+    // case + same name font, so staff can tell "customer didn't provide it" apart from "script missed it".
+    NO_NAME:           'No name provided',
     MISMATCH_LINES:   ['NAME MIS-MATCH'],
     // {MEMBER} is filled in bold + UPPERCASE, {TICKET} as the proper-cased ticket first name.
     MISMATCH_NOTE_TMPL: 'The membership number used belongs to {MEMBER}, not {TICKET}. Search Members to confirm {TICKET} is a member prior to check-in.',
@@ -424,6 +428,16 @@
       // 2) positional fallback: answers whose ticket was replaced (e.g. re-added at the door -> new id) can't
       //    match by id. Pair the leftover answers to the still-blank tickets in booking order, best-effort.
       var orphans = entries.filter(function (e) { return !e.mapped; });
+      // Guardrail: never let a form name that already belongs to a NAMED ticket get re-placed onto a blank
+      // one. e.g. a 3-ticket booking (adult Florence + 2 kids) whose form lists "Florence" and one child:
+      // Florence is already on her adult ticket, so her form entry must NOT be blindly paired to a blank
+      // CHILD slot. Drop any orphan whose first name already appears as a holder on the booking (ticket-level
+      // name, or a name we just assigned this pass), keeping month-only orphans intact.
+      var fw = function (s) { return String(s || '').trim().split(/\s+/)[0].toLowerCase(); };
+      var knownNames = {};
+      bip.forEach(function (p) { var n = fw(p.name); if (n) knownNames[n] = true; });
+      Object.keys(state.formNames).forEach(function (k) { var n = fw(state.formNames[k]); if (n) knownNames[n] = true; });
+      orphans = orphans.filter(function (e) { var n = fw(e.name); return !n || !knownNames[n]; });
       var blanks = bip.filter(function (p) {
         var tp = String(p.bookingItemPartId);
         return !String(p.name || '').trim() && !state.formNames[tp];
@@ -610,6 +624,9 @@
       '.rcz-casual{position:absolute !important;inset:0 !important;display:flex !important;flex-direction:column !important;align-items:center !important;justify-content:center !important;text-align:center !important;color:#4b5563 !important;z-index:5 !important;pointer-events:none !important;padding:16px 18px 78px !important;gap:0 !important;}',
       /* big near-black NAME, then the ticket TYPE, then the small grey casual sub-line */
       '.rcz-casual__name{font:900 48px/1.02 -apple-system,Segoe UI,Roboto,sans-serif !important;color:#111827 !important;letter-spacing:.01em !important;}',
+      // genuine "no name on file" placeholder: same name font, softened to grey so it reads as a system note,
+      // not a person literally called "No name provided".
+      '.rcz-casual__name--none{color:#9aa3af !important;letter-spacing:normal !important;}',
       '.rcz-casual__type{font:700 22px/1.3 -apple-system,Segoe UI,Roboto,sans-serif !important;color:#1f2933 !important;margin-top:6px !important;}',
       '.rcz-casual__sub{font:400 15px/1.3 -apple-system,Segoe UI,Roboto,sans-serif !important;color:#6b7280 !important;margin-top:9px !important;}',
       'app-bip-summary:not(.rcz-skip) .summary__wrapper.rcz-casual-on button[id^="booking-details-button"] mat-icon{display:none !important;}',
@@ -705,7 +722,10 @@
     var grp = String(category || '').match(/book\s+for\s+(\d+)/i);
     // group/package ticket -> "Group of 6"; solo ticket -> the type upper-cased (ADULT/CHILD/…)
     var typ = grp ? CFG.CASUAL_GROUP_TYPE.replace('{N}', grp[1]) : String(category || '').toUpperCase();
-    var html = '<div class="rcz-casual__name">' + esc(name || '') + '</div>' +
+    var nameHtml = name
+      ? '<div class="rcz-casual__name">' + esc(name) + '</div>'
+      : '<div class="rcz-casual__name rcz-casual__name--none">' + esc(CFG.NO_NAME) + '</div>';
+    var html = nameHtml +
                '<div class="rcz-casual__type">' + esc(typ) + '</div>' +
                '<div class="rcz-casual__sub">' + esc(CFG.CASUAL_SUB) + '</div>';
     if (c.getAttribute('data-h') !== html) { c.innerHTML = html; c.setAttribute('data-h', html); }
