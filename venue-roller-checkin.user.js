@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Venue — ROLLER Check-in Cards + Member Photos
 // @namespace    venue.roller.checkin-cards
-// @version      5.39
+// @version      5.40
 // @description  Reformats the ROLLER POS booking check-in list into full-frame photo cards, surfaces member photos on load (no Verify click), alerts when a member has no photo, handles family memberships (best-effort photos + add-name prompt) and close/similar name matches.
 // @match        https://pos.roller.app/*
 // @match        https://*.roller.app/*
@@ -640,7 +640,7 @@
       'app-bip-summary:not(.rcz-skip) .summary__wrapper.rcz-alert-on button[id^="booking-details-button"] mat-icon{display:none !important;}',
       /* CASUAL (non-member) — calm grey, same card-filling layout; icon hidden */
       '.rcz-casual{position:absolute !important;left:12px !important;bottom:12px !important;z-index:6 !important;pointer-events:none !important;}',
-      '.rcz-casual__tag{font:700 12.5px/1.2 Roboto,Arial,sans-serif !important;color:#565d66 !important;}',
+      '.rcz-casual__tag{font:700 14px/1.32 Roboto,Arial,sans-serif !important;color:#565d66 !important;}',
       /* big near-black NAME, then the ticket TYPE, then the small grey casual sub-line */
       '.rcz-casual__name{font:900 48px/1.02 Roboto,Arial,sans-serif !important;color:#111827 !important;letter-spacing:.01em !important;}',
       // genuine "no name on file" placeholder: same name font, softened to grey so it reads as a system note,
