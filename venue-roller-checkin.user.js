@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Venue — ROLLER Check-in Cards + Member Photos
 // @namespace    venue.roller.checkin-cards
-// @version      5.64
+// @version      5.65
 // @description  Reformats the ROLLER POS booking check-in list into full-frame photo cards, surfaces member photos on load (no Verify click), alerts when a member has no photo, handles family memberships (best-effort photos + add-name prompt) and close/similar name matches.
 // @match        https://pos.roller.app/*
 // @match        https://*.roller.app/*
@@ -1393,9 +1393,20 @@
     var tries = 0;
     var iv = setInterval(function () {
       tries++;
-      if (location.pathname === parent) { clearInterval(iv); try { history.go(-2); } catch (e) {} }
+      if (location.pathname === parent) { clearInterval(iv); backOutOfMemberships(0); }
       else if (tries > 30) clearInterval(iv);  // ~3s: Done was cancelled or navigated elsewhere
     }, 100);
+  }
+  // Keep stepping browser-back while we're still on any /search/memberships/ page, so we exit the whole
+  // membership area (the parent account page Done pushes AND the child edit page) and land back on wherever
+  // the user actually was before (e.g. the booking check-in) — robust to how many membership pages are
+  // stacked in history and to whether the child was reached from a booking or from the parent page.
+  function backOutOfMemberships(steps) {
+    if (steps >= 6) return;                                          // safety cap
+    if (!/^\/search\/memberships\//.test(location.pathname)) return; // escaped the membership area -> done
+    var before = location.pathname;
+    try { history.back(); } catch (e) { return; }
+    setTimeout(function () { if (location.pathname !== before) backOutOfMemberships(steps + 1); }, 320);
   }
   function installBadgeLinkNav() {
     if (window.__rczBadgeNav) return; window.__rczBadgeNav = true;
