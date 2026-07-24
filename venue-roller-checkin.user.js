@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Venue — ROLLER Check-in Cards + Member Photos
 // @namespace    venue.roller.checkin-cards
-// @version      5.58
+// @version      5.59
 // @description  Reformats the ROLLER POS booking check-in list into full-frame photo cards, surfaces member photos on load (no Verify click), alerts when a member has no photo, handles family memberships (best-effort photos + add-name prompt) and close/similar name matches.
 // @match        https://pos.roller.app/*
 // @match        https://*.roller.app/*
@@ -546,6 +546,34 @@
   // screen — we stay out, or we blow up single cards, block scrolling, or bleed onto unrelated
   // pages (e.g. an alert painted over a membership photo). So we activate on the list route only.
   function activeRoute() { return /^\/search\/bookings\/\d+\/?$/.test(location.pathname); }
+  // The member detail page (/search/memberships/<acct>/<memberId>) — where "Add name" lands staff on the
+  // Guest tab. Hard to get back from, so we add our own Back buttons here (#4).
+  function membershipDetailRoute() { return /^\/search\/memberships\/\d+\/\d+/.test(location.pathname); }
+  // A Back button that does exactly what the browser Back does (history.back()) — a big back-arrow over a
+  // "Back" label, matching the two mockup spots on the member detail page.
+  function makeBackBtn() {
+    var b = document.createElement('button');
+    b.type = 'button'; b.className = 'rcz-backbtn';
+    b.innerHTML = '<svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#2f3540" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 12H5M12 19l-7-7 7-7"/></svg><span class="rcz-backbtn__lbl">Back</span>';
+    b.style.cssText = 'display:inline-flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;background:#fff;border:1px solid #d6d9de;border-radius:12px;padding:8px 16px;cursor:pointer;color:#2f3540;font:700 13px/1 Roboto,Arial,sans-serif;box-shadow:0 1px 5px rgba(0,0,0,.14);z-index:60;';
+    b.addEventListener('click', function (e) { e.preventDefault(); e.stopPropagation(); history.back(); });
+    return b;
+  }
+  function ensureBackButtons() {
+    var detail = document.querySelector('app-booking-detail'); if (!detail) return;
+    if (getComputedStyle(detail).position === 'static') detail.style.position = 'relative';
+    if (!detail.querySelector('.rcz-backbtn--top')) {
+      var t = makeBackBtn(); t.classList.add('rcz-backbtn--top');
+      t.style.position = 'absolute'; t.style.top = '12px'; t.style.left = '12px';
+      detail.insertBefore(t, detail.firstChild);
+    }
+    if (!detail.querySelector('.rcz-backbtn--bottom')) {
+      var b = makeBackBtn(); b.classList.add('rcz-backbtn--bottom');
+      b.style.display = 'flex'; b.style.margin = '18px auto 24px';
+      detail.appendChild(b);
+    }
+  }
+  function removeBackButtons() { document.querySelectorAll('.rcz-backbtn').forEach(function (e) { e.remove(); }); }
 
   // A name lookup can return memberships / gift cards / tabs mixed in with tickets. Our whole card
   // treatment assumes a TICKET; a membership record must be left exactly as ROLLER draws it. A
@@ -1162,6 +1190,7 @@
 
   function render() {
     try {
+      if (membershipDetailRoute()) ensureBackButtons(); else removeBackButtons();
       if (!activeRoute()) {
         // not the booking check-in list -> strip our styling/overlays so ROLLER's native pages work
         var st = document.getElementById('rcz-style'); if (st) st.remove();
