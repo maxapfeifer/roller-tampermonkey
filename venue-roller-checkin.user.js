@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Venue — ROLLER Check-in Cards + Member Photos
 // @namespace    venue.roller.checkin-cards
-// @version      5.60
+// @version      5.61
 // @description  Reformats the ROLLER POS booking check-in list into full-frame photo cards, surfaces member photos on load (no Verify click), alerts when a member has no photo, handles family memberships (best-effort photos + add-name prompt) and close/similar name matches.
 // @match        https://pos.roller.app/*
 // @match        https://*.roller.app/*
@@ -407,19 +407,6 @@
         if (linked) e.misaligned = true;
       });
       state.byCard = next;
-      // --- TEMP DEBUG DUMP (remove before final) ---
-      try {
-        var _dbg = document.getElementById('rcz-dbg') || (function () { var e = document.createElement('div'); e.id = 'rcz-dbg'; e.style.display = 'none'; document.documentElement.appendChild(e); return e; })();
-        _dbg.textContent = JSON.stringify({
-          ver: '5.55dbg', path: location.pathname,
-          discountsRaw: j.discounts || [],
-          discs: discs.map(function (d) { return { raw: d.raw, name: d.name, amount: d.amount, pct: d.pct, r: d.r, b: d.b, family: d.family, unnamed: d.unnamed, used: d.used }; }),
-          bip: (j.bipDetail || []).map(function (p) { return { part: p.bookingItemPartId, name: p.name, disc: p.bookingItemDiscount, product: p.productName }; }),
-          byCard: Object.keys(next).map(function (c) { var e = next[c]; return { card: c, member: e.member, mismatch: e.mismatch, family: e.family, closematch: e.closematch, misaligned: e.misaligned, paidMember: e.paidMember, visiting: e.visiting, memberFull: e.memberFull, ticketName: e.ticketName, memberName: e.memberName }; }),
-          discountIndex: state.discountIndex
-        });
-      } catch (e) {}
-      // --- END DEBUG ---
       render();
       toFetch.forEach(fetchMembership);
       fetchForms(j); // Ticket Holder Details form — supplies birthday month AND a fallback name for blank-named tickets
