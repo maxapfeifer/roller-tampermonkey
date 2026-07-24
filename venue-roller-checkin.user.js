@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Venue — ROLLER Check-in Cards + Member Photos
 // @namespace    venue.roller.checkin-cards
-// @version      5.51
+// @version      5.52
 // @description  Reformats the ROLLER POS booking check-in list into full-frame photo cards, surfaces member photos on load (no Verify click), alerts when a member has no photo, handles family memberships (best-effort photos + add-name prompt) and close/similar name matches.
 // @match        https://pos.roller.app/*
 // @match        https://*.roller.app/*
@@ -316,19 +316,20 @@
           // member visiting from another museum -> fetch photo (photo essential)
           next[cardId] = { member: true, pending: true, photo: null, visiting: true, tier: tier };
           toFetch.push({ cardId: cardId, r: d.r, b: d.b });
+        } else if (d.family && d.unnamed) {
+          // family slot with NO real individual identity (blank name, or the account-holder name defaulted
+          // onto every slot so the slots are effectively un-named) -> prompt to add the individual's name.
+          // Checked BEFORE exact, so a slot whose ticket happens to match that defaulted name (e.g. "Tori"
+          // on a "Tori Allen" slot that is actually blank) STILL gets the "Add individual names" prompt.
+          next[cardId] = { member: true, pending: true, photo: null, family: true, tier: tier };
+          toFetch.push({ cardId: cardId, r: d.r, b: d.b });
         } else if (exact) {
-          // name matches the membership (single member OR a family account holder like Emma) -> just
-          // the photo, no prompt. Checked BEFORE the family branch so a correctly-named slot stays clean.
+          // name matches a genuinely-named membership slot -> just the photo, no prompt.
           next[cardId] = { member: true, pending: true, photo: null, tier: tier };
           toFetch.push({ cardId: cardId, r: d.r, b: d.b });
         } else if (close) {
           // similar/variant name (Jax vs Jaxson) -> show photo, prompt to confirm/override the name
           next[cardId] = { member: true, pending: true, photo: null, closematch: true, memberName: proper(fnM), ticketName: proper(fnT), tier: tier };
-          toFetch.push({ cardId: cardId, r: d.r, b: d.b });
-        } else if (d.family && d.unnamed) {
-          // family slot with NO individual identity (blank, or the account-holder name repeated across
-          // slots) -> show photo best-effort (positional) and prompt to add the individual's name.
-          next[cardId] = { member: true, pending: true, photo: null, family: true, tier: tier };
           toFetch.push({ cardId: cardId, r: d.r, b: d.b });
         } else if (!fnT) {
           // ticket has NO holder name (e.g. a walk-up / door sale where the attendee's name was never
