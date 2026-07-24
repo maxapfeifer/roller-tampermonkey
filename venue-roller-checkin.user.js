@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Venue — ROLLER Check-in Cards + Member Photos
 // @namespace    venue.roller.checkin-cards
-// @version      5.47
+// @version      5.48
 // @description  Reformats the ROLLER POS booking check-in list into full-frame photo cards, surfaces member photos on load (no Verify click), alerts when a member has no photo, handles family memberships (best-effort photos + add-name prompt) and close/similar name matches.
 // @match        https://pos.roller.app/*
 // @match        https://*.roller.app/*
@@ -840,8 +840,24 @@
     } catch (e) {}
     return m;
   }
-  function memHref(info) {
+  // this card's OWN membership slot: cardId -> its memberBookingItemPartId (state.discountIndex) -> the
+  // matching per-slot discount pill's href. Family-safe: each child resolves to their own slot (not the
+  // first name-match, which for a family is always the account holder).
+  function cardMemberHref(cardId) {
+    if (!cardId) return null;
+    try {
+      for (var b in state.discountIndex) {
+        if (state.discountIndex[b] && state.discountIndex[b].cardId === cardId) {
+          var pill = document.getElementById('membership-discount-link-' + b);
+          if (pill) { var h = pill.getAttribute('href'); if (h && /^\/search\/memberships\/\d+\/\d+/.test(h)) return h; }
+        }
+      }
+    } catch (e) {}
+    return null;
+  }
+  function memHref(info, cardId) {
     if (!CFG.LINK_MEMBERSHIP_BADGE) return null;
+    var slot = cardMemberHref(cardId); if (slot) return slot;   // prefer this card's own slot
     var lm = state.memLinks; if (!lm) return null;
     var k = String((info && info.memberFull) || '').replace(/\s+/g, ' ').trim().toLowerCase();
     return k && lm[k] ? lm[k] : null;
@@ -914,7 +930,7 @@
   }
   // add the family / close-match / mis-assigned note to a member photo card (shared by both photo paths)
   function memberNote(w, info, cardId) {
-    if (info.family) { addActionReq(w, cardId, [{ label: 'Add individual names', href: memHref(info) }]); clrNote(w); }
+    if (info.family) { addActionReq(w, cardId, [{ label: 'Add individual names', href: memHref(info, cardId) }]); clrNote(w); }
     else if (info.closematch) { addActionReq(w, cardId, [{ label: 'Add a ticket' }, { label: 'Pass nickname' }]); clrNote(w); }
     else if (info.paidMember) { addNote(w, 'paidmember', firstNameOnCard(w), ticketTypeOfPart(info.recipPart)); clrActionReq(w); }
     else { clrNote(w); clrActionReq(w); }
@@ -1092,7 +1108,7 @@
           if (pm) {
             showMismatch(w, btn, icon, img, cardId, pm.memberName, pm.ticketName, info.tier);
           } else {
-            addBadge(w, info.tier, memHref(info));
+            addBadge(w, info.tier, memHref(info, cardId));
             clrAlert(w); clrCasual(w); clrMismatch(w); clrVisiting(w);
             // photo cards can carry a prompt: family -> "add name"; close name -> "confirm"; paid member ->
             // "discount mis-assigned, total still correct"
@@ -1120,12 +1136,12 @@
           var mem = '<b>' + esc((info.memberName || 'another member').toUpperCase()) + '</b>';
           var tk = esc(info.ticketName || 'this guest');
           var note = esc(CFG.MISMATCH_NOTE_TMPL).split('{MEMBER}').join(mem).split('{TICKET}').join(tk);
-          clrMismatch(w); addActionReq(w, cardId, [{ label: 'Add a ticket' }, { label: 'Pass nickname' }]); clrAlert(w); clrCasual(w); clrVisiting(w); clrNote(w); if (info.tier) addBadge(w, info.tier, memHref(info)); else clrBadge(w);
+          clrMismatch(w); addActionReq(w, cardId, [{ label: 'Add a ticket' }, { label: 'Pass nickname' }]); clrAlert(w); clrCasual(w); clrVisiting(w); clrNote(w); if (info.tier) addBadge(w, info.tier, memHref(info, cardId)); else clrBadge(w);
         } else if (info && !info.pending && info.visiting) {
           // visiting overlay dropped from the redesign — a visiting member with no photo is treated
           // like any other no-photo member (standard "requires photo" alert), no "visiting" banner.
           if (img) img.remove();
-          addAlert(w, memHref(info), cardId); clrCasual(w); clrMismatch(w); clrVisiting(w); clrNote(w); if (info.family) addActionReq(w, cardId, [{ label: 'Add individual names', href: memHref(info) }]); else clrActionReq(w); if (info.tier) addBadge(w, info.tier, memHref(info)); else clrBadge(w);
+          addAlert(w, memHref(info, cardId), cardId); clrCasual(w); clrMismatch(w); clrVisiting(w); clrNote(w); if (info.family) addActionReq(w, cardId, [{ label: 'Add individual names', href: memHref(info, cardId) }]); else clrActionReq(w); if (info.tier) addBadge(w, info.tier, memHref(info, cardId)); else clrBadge(w);
         } else if (info && !info.pending && info.member) {
           var np = nativePhotoImg(btn);
           if (np) {
@@ -1140,14 +1156,14 @@
             if (pmn) {
               showMismatch(w, btn, icon, img, cardId, pmn.memberName, pmn.ticketName, info.tier);
             } else {
-              addBadge(w, info.tier, memHref(info));
+              addBadge(w, info.tier, memHref(info, cardId));
               clrAlert(w); clrCasual(w); clrMismatch(w); clrVisiting(w);
               memberNote(w, info, cardId);
             }
           } else {
             // matched member, genuinely no photo on file -> "requires photo" alert
             if (img) img.remove();
-            addAlert(w, memHref(info), cardId); clrCasual(w); clrMismatch(w); clrVisiting(w); clrNote(w); if (info.family) addActionReq(w, cardId, [{ label: 'Add individual names', href: memHref(info) }]); else clrActionReq(w); if (info.tier) addBadge(w, info.tier, memHref(info)); else clrBadge(w);
+            addAlert(w, memHref(info, cardId), cardId); clrCasual(w); clrMismatch(w); clrVisiting(w); clrNote(w); if (info.family) addActionReq(w, cardId, [{ label: 'Add individual names', href: memHref(info, cardId) }]); else clrActionReq(w); if (info.tier) addBadge(w, info.tier, memHref(info, cardId)); else clrBadge(w);
           }
         } else if (info && !info.pending && info.member === false) {
           // casual (non-member) -> big guest name heading + "Casual <type> Booking" + sub-line
@@ -1244,7 +1260,7 @@
           // but NOT for members who already have a photo (no alert), where the Membership tab is expected.
           var bhost = badge.closest ? badge.closest('app-bip-summary') : null;
           var bAlert = bhost ? bhost.querySelector('.rcz-alert[data-rcz-href]') : null;
-          if (href && forwardToPill(href)) { ev.preventDefault(); if (bAlert) openGuestTabSoon(); return; }
+          if (href && forwardToPill(href)) { ev.preventDefault(); openGuestTabSoon(); return; }
           var host = badge.closest ? badge.closest('app-bip-summary') : null;
           var tile = host ? host.querySelector('button[id^="booking-details-button-"]') : null;
           if (tile) { ev.preventDefault(); tile.click(); }
