@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Venue — ROLLER Check-in Cards + Member Photos
 // @namespace    venue.roller.checkin-cards
-// @version      5.49
+// @version      5.50
 // @description  Reformats the ROLLER POS booking check-in list into full-frame photo cards, surfaces member photos on load (no Verify click), alerts when a member has no photo, handles family memberships (best-effort photos + add-name prompt) and close/similar name matches.
 // @match        https://pos.roller.app/*
 // @match        https://*.roller.app/*
@@ -242,7 +242,6 @@
   function processBooking() {
     try {
       var j = state.booking; if (!j) return;
-      try { if (j.discounts && j.discounts[0]) console.log('[RCZ-DBG] discount0 keys:', Object.keys(j.discounts[0]), 'sample:', JSON.stringify(j.discounts.map(function (x) { return { memberName: x.memberName, memberBookingItemPartId: x.memberBookingItemPartId, memberReceiptNumber: x.memberReceiptNumber, memberId: x.memberId, membershipMemberId: x.membershipMemberId, memberBookingItemId: x.memberBookingItemId }; }))); } catch (e) {}
       var bip = Array.isArray(j.bipDetail) ? j.bipDetail : [];
       var discs = (j.discounts || []).map(function (d) {
         return { raw: d.memberName, name: firstName(d.memberName), amount: d.amount, pct: d.percentageOff, r: d.memberReceiptNumber, b: d.memberBookingItemPartId, used: false };
@@ -848,7 +847,7 @@
     if (!cardId) return null;
     try {
       for (var b in state.discountIndex) {
-        if (state.discountIndex[b] && state.discountIndex[b].cardId === cardId) {
+        if (state.discountIndex[b] && String(state.discountIndex[b].cardId) === String(cardId)) {
           var pill = document.getElementById('membership-discount-link-' + b);
           if (pill) { var h = pill.getAttribute('href'); if (h && /^\/search\/memberships\/\d+\/\d+/.test(h)) return h; }
         }
