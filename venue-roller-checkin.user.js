@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Venue — ROLLER Check-in Cards + Member Photos
 // @namespace    venue.roller.checkin-cards
-// @version      5.57
+// @version      5.58
 // @description  Reformats the ROLLER POS booking check-in list into full-frame photo cards, surfaces member photos on load (no Verify click), alerts when a member has no photo, handles family memberships (best-effort photos + add-name prompt) and close/similar name matches.
 // @match        https://pos.roller.app/*
 // @match        https://*.roller.app/*
@@ -1350,9 +1350,9 @@
           var uhost = unl.closest ? unl.closest('.summary__wrapper') : null;
           if (uhost) uhost.classList.remove('rcz-locked');
           var uact = unl.getAttribute('data-rcz-act');
-          if (uact === 'photo') { openVerifyPanel(); return; }    // ADD PHOTO -> ROLLER's native verify panel, in place (#3)
-          var uhref = unl.getAttribute('data-rcz-href');
-          if (uhref && forwardToPill(uhref)) openGuestTabSoon();  // ADD NAME -> the member's Guest tab (name field)
+          if (uact === 'photo' && openVerifyPanel()) return;      // ADD PHOTO -> ROLLER's native verify panel, in place (#3)
+          var uhref = unl.getAttribute('data-rcz-href');           // (visiting member: no verify panel -> fall through)
+          if (uhref && forwardToPill(uhref)) openGuestTabSoon();  // ADD NAME (or the photo fallback) -> the member's Guest tab
           return;
         }
         // A) the tier badge link -> membership detail, else fall back to the card's tile
@@ -1384,7 +1384,8 @@
           var tHost = tileBtn.closest('app-bip-summary');
           var tHasPhoto = tHost ? !!tHost.querySelector('img.rcz-photo') : true;
           if (tinfo && tinfo.member && !tinfo.misaligned && !tinfo.paidMember && !tHasPhoto) {
-            ev.preventDefault(); ev.stopImmediatePropagation(); openVerifyPanel(); return;
+            if (openVerifyPanel()) { ev.preventDefault(); ev.stopImmediatePropagation(); return; }
+            // no native verify panel available (e.g. a visiting member) -> fall through to normal nav below
           }
           var thref = tinfo ? memHref(tinfo, tcid) : null;
           if (thref && forwardToPill(thref)) { ev.preventDefault(); ev.stopImmediatePropagation(); openGuestTabSoon(); return; }
