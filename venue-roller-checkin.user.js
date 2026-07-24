@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Venue — ROLLER Check-in Cards + Member Photos
 // @namespace    venue.roller.checkin-cards
-// @version      5.53
+// @version      5.54
 // @description  Reformats the ROLLER POS booking check-in list into full-frame photo cards, surfaces member photos on load (no Verify click), alerts when a member has no photo, handles family memberships (best-effort photos + add-name prompt) and close/similar name matches.
 // @match        https://pos.roller.app/*
 // @match        https://*.roller.app/*
@@ -274,9 +274,14 @@
       // A ticket is a MEMBER check-in when it carries a membership discount (bookingItemDiscount != 0).
       var memberTickets = bip.filter(function (p) { return p.bookingItemDiscount; });
       var assign = {}; // cardId -> discount
-      // Pass 1: match the ticket-holder's name to a membership name.
+      // Pass 1: match the ticket-holder's name to a membership name. Only match on an IDENTIFYING name:
+      // skip discounts flagged unnamed (blank, or the account-holder name defaulted across 2+ family
+      // slots). Otherwise a family whose tickets all carry the holder name "Amanda Hawker" would pair
+      // ticket[i] -> discs[i] by ROLLER's arbitrary array order, sending e.g. the Adult ticket to a
+      // Child slot. Letting those fall through to Pass 2 pairs them by the per-slot discount amount
+      // (Adult $12 vs Child $16), which lands each ticket on its correct-type membership slot.
       memberTickets.forEach(function (p) {
-        var d = discs.find(function (x) { return !x.used && x.name && x.name === firstName(p.name); });
+        var d = discs.find(function (x) { return !x.used && x.name && !x.unnamed && x.name === firstName(p.name); });
         if (d) { d.used = true; assign[p.bookingItemPartId] = d; }
       });
       // Pass 2: for the rest, match by the discount's dollar amount (the reliable ROLLER link).
