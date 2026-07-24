@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Venue — ROLLER Check-in Cards + Member Photos
 // @namespace    venue.roller.checkin-cards
-// @version      5.50
+// @version      5.51
 // @description  Reformats the ROLLER POS booking check-in list into full-frame photo cards, surfaces member photos on load (no Verify click), alerts when a member has no photo, handles family memberships (best-effort photos + add-name prompt) and close/similar name matches.
 // @match        https://pos.roller.app/*
 // @match        https://*.roller.app/*
@@ -1266,19 +1266,22 @@
           if (tile) { ev.preventDefault(); tile.click(); }
           return;
         }
-        // B) on a "PHOTO REQUIRED NOW" card, clicking the middle (the avatar tile behind the alert) should
-        //    go to the membership detail, NOT ROLLER's ticket-holder page. The alert is pointer-transparent,
-        //    so the click lands on the tile; if this card is showing the alert, reroute it to the membership.
+        // B) clicking the photo/tile of ANY member card goes to THAT member's own profile (their specific
+        //    membership slot) on the Guest tab — NOT ROLLER's ticket-holder page. Works for every member
+        //    variation (matched photo, add-photo, mismatch, family, …); casual tiles have no membership so
+        //    they fall through to ROLLER's native nav. preventDefault alone won't cancel ROLLER's own (click)
+        //    handler, so we stopImmediatePropagation in this capture phase to kill the native nav first.
         var tileBtn = ev.target && ev.target.closest ? ev.target.closest('button[id^="booking-details-button-"]') : null;
         if (tileBtn) {
+          var tcid = tileBtn.id.replace('booking-details-button-', '');
+          var tinfo = state.byCard[tcid];
+          var thref = tinfo ? memHref(tinfo, tcid) : null;
+          if (thref && forwardToPill(thref)) { ev.preventDefault(); ev.stopImmediatePropagation(); openGuestTabSoon(); return; }
+          // fallback: a card still carrying the legacy alert data-rcz-href
           var ahost = tileBtn.closest('app-bip-summary');
           var alertEl = ahost ? ahost.querySelector('.rcz-alert[data-rcz-href]') : null;
           if (alertEl) {
             var ah = alertEl.getAttribute('data-rcz-href');
-            // preventDefault() alone does NOT cancel ROLLER's own (click) handler on this <button> — that
-            // handler still fires on the bubble phase and routes to the ticket, overriding our membership
-            // nav (the "correctly links through, then breaks on the way" symptom). stopImmediatePropagation
-            // in this capture-phase listener kills the event before the native tile handler ever sees it.
             if (ah && forwardToPill(ah)) { ev.preventDefault(); ev.stopImmediatePropagation(); openGuestTabSoon(); return; }
           }
         }
