@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Venue — ROLLER Check-in Cards + Member Photos
 // @namespace    venue.roller.checkin-cards
-// @version      5.55
+// @version      5.56
 // @description  Reformats the ROLLER POS booking check-in list into full-frame photo cards, surfaces member photos on load (no Verify click), alerts when a member has no photo, handles family memberships (best-effort photos + add-name prompt) and close/similar name matches.
 // @match        https://pos.roller.app/*
 // @match        https://*.roller.app/*
@@ -36,6 +36,11 @@
     PLACEHOLDER_ICON_PX: 150,// size of the grey person icon when there's no photo
     CDN:              'https://cdn.rollerdigital.com/ticket/',
     GET_MEMBERSHIP:   'https://doorlist.roller.app/api/customers/get-membership',
+    // Foster-care partnership discounts: free-entry codes that are NOT memberships. Matched (lower-cased,
+    // substring) against the discount code and name. Add future partner codes here. Guests carrying one are
+    // shown as a "Foster CARE Ticket" (where "Casual Guest" normally sits), never as members.
+    FOSTER_MATCH:     ['mfslumk', 'mackillop family services'],
+    FOSTER_LABEL:     'Foster CARE Ticket',
     ALERT_LINES:      ['ADD PHOTO NOW!', 'WARNING: ANY CHECK-IN WITHOUT PHOTO WILL CAUSE CANCELLATION'],
     // Casual (non-member) card: big NAME, then the ticket TYPE, then a small sub-line.
     // Solo tickets show the type upper-cased (ADULT/CHILD/…); "Book for 6 @ $…" package tickets
@@ -215,6 +220,13 @@
      CORE LOGIC
      ====================================================================== */
   function firstName(s) { return String(s || '').trim().toLowerCase().split(/\s+/)[0]; }
+  // A foster-care partner discount (free entry via a partnership code, NOT a membership). Matched by the
+  // discount code or its name so new partner codes can be added to CFG.FOSTER_MATCH without touching logic.
+  function isFosterDisc(d) {
+    if (!d) return false;
+    var hay = ((d.code || '') + ' ' + (d.name || '')).toLowerCase();
+    return CFG.FOSTER_MATCH.some(function (p) { return hay.indexOf(p) > -1; });
+  }
   function normName(s) { return String(s || '').replace(/\s+/g, ' ').trim().toLowerCase(); }
   function proper(s) { s = String(s || ''); return s ? s.charAt(0).toUpperCase() + s.slice(1) : s; }
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
@@ -244,8 +256,13 @@
       var j = state.booking; if (!j) return;
       var bip = Array.isArray(j.bipDetail) ? j.bipDetail : [];
       var discs = (j.discounts || []).map(function (d) {
-        return { raw: d.memberName, name: firstName(d.memberName), amount: d.amount, pct: d.percentageOff, r: d.memberReceiptNumber, b: d.memberBookingItemPartId, used: false };
+        return { raw: d.memberName, name: firstName(d.memberName), amount: d.amount, pct: d.percentageOff, r: d.memberReceiptNumber, b: d.memberBookingItemPartId, used: false, foster: isFosterDisc(d) };
       });
+      // Foster-care partnership (e.g. MacKillop Family Services): a plain discount CODE that zeroes entry so
+      // partner guests come in free. It is NOT a membership (no memberName / member slot). When the booking
+      // carries such a discount and nothing that looks like a paid membership check-in (a discount with a
+      // real member slot id), every discounted ticket is a partner guest, not a member.
+      var bookingFoster = discs.some(function (d) { return d.foster; }) && !discs.some(function (d) { return !d.foster && d.b != null; });
       // Family membership signal: the same membership (memberReceiptNumber) appears across 2+ discount
       // slots in this one booking. Individual children's slots usually carry the account-holder's name
       // (or blank), so we must NOT treat them as name-mismatches — instead show the photo best-effort
@@ -284,16 +301,26 @@
         var d = discs.find(function (x) { return !x.used && x.name && !x.unnamed && x.name === firstName(p.name); });
         if (d) { d.used = true; assign[p.bookingItemPartId] = d; }
       });
-      // Pass 2: for the rest, match by the discount's dollar amount (the reliable ROLLER link).
+      // Pass 2a: exact dollar-amount match, for ALL tickets, BEFORE any fallback. Doing every exact match
+      // first is what keeps a family correct: e.g. the Adult ticket's unique $12 must claim the Adult slot
+      // before a Child ticket (whose own discount amount doesn't line up with any slot) grabs it via the
+      // fallback below. (Previously the fallback ran per-ticket, so a mis-lining Child processed first stole
+      // the Adult's slot and the Adult spilled onto a Child slot.)
       memberTickets.forEach(function (p) {
         if (assign[p.bookingItemPartId]) return;
         var d = discs.find(function (x) { return !x.used && x.amount != null && Number(x.amount) === Number(p.bookingItemDiscount); });
-        if (!d) d = discs.find(function (x) { return !x.used; }); // last resort
+        if (d) { d.used = true; assign[p.bookingItemPartId] = d; }
+      });
+      // Pass 2b: leftovers (their amount matched no slot) take any remaining discount, in order.
+      memberTickets.forEach(function (p) {
+        if (assign[p.bookingItemPartId]) return;
+        var d = discs.find(function (x) { return !x.used; });
         if (d) { d.used = true; assign[p.bookingItemPartId] = d; }
       });
       bip.forEach(function (p) {
         var cardId = p.bookingItemPartId;
         if (!p.bookingItemDiscount) { next[cardId] = { member: false, pending: false, photo: null }; return; } // casual
+        if (bookingFoster) { next[cardId] = { member: false, fosterCare: true, pending: false, photo: null }; return; } // foster-care partner (free entry, not a member)
         var d = assign[cardId];
         if (!d) {
           // Member discount on this ticket, but every discount record was already mapped to another ticket
@@ -337,11 +364,13 @@
           next[cardId] = { member: true, pending: true, photo: null, closematch: true, memberName: proper(fnM), ticketName: proper(fnT), tier: tier };
           toFetch.push({ cardId: cardId, r: d.r, b: d.b });
         } else if (!fnT) {
-          // ticket has NO holder name (e.g. a walk-up / door sale where the attendee's name was never
-          // captured). With no name to compare we can't assert a mismatch — show the member's photo
-          // best-effort as a clean member card. (If a name later turns up and doesn't match the membership,
-          // the pill-name guard at render still flags it.)
+          // ticket has NO holder name (e.g. a front-desk / walk-up sale where the attendee's name was never
+          // captured on the ticket). With no name to compare we can't assert a mismatch — show the member's
+          // photo best-effort as a clean member card. When the membership slot is genuinely, uniquely named
+          // (NOT a family's shared/defaulted name), bring that member name through to the bottom of the tile
+          // so staff see who it is — the ticket just didn't record it. (#8/#9)
           next[cardId] = { member: true, pending: true, photo: null, tier: tier };
+          if (!d.unnamed && d.raw && /[a-zA-Z]/.test(d.raw)) next[cardId].displayName = String(d.raw).trim();
           toFetch.push({ cardId: cardId, r: d.r, b: d.b });
         } else {
           // ticket name != membership name -> name-mismatch. Covers both a single membership AND a
@@ -628,8 +657,8 @@
       'app-bip-summary:not(.rcz-skip) .summary__wrapper mat-checkbox.align-top--checkbox{display:none !important;}',
       'app-bip-summary:not(.rcz-skip) .summary__wrapper .summary-detail{position:absolute !important;right:76px !important;left:auto !important;bottom:12px !important;flex:none !important;width:auto !important;max-width:44% !important;background:none !important;border:none !important;border-radius:0 !important;padding:0 !important;box-shadow:none !important;z-index:6 !important;text-align:right !important;}',
       'app-bip-summary:not(.rcz-skip) .summary-detail p.summary-detail__item:not(.summary-detail__item--emphasis){display:none !important;}',
-      /* category ("Adult") smaller & muted; name ("Erin") larger, dark, bold */
-      'app-bip-summary:not(.rcz-skip) .summary-detail .summary-detail__item--emphasis{font-size:18px !important;font-weight:600 !important;color:#7b828c !important;margin:0 !important;line-height:1.32 !important;}',
+      /* category ("Adult"/"Child"/"Infant") smaller; name ("Erin") larger, bold. Type text is BLACK. */
+      'app-bip-summary:not(.rcz-skip) .summary-detail .summary-detail__item--emphasis{font-size:18px !important;font-weight:600 !important;color:#111827 !important;margin:0 !important;line-height:1.32 !important;}',
       'app-bip-summary:not(.rcz-skip) .summary-detail .summary-detail__item-holder-wrapper{display:block !important;font-size:18px !important;font-weight:800 !important;color:#1f2933 !important;margin-top:0 !important;line-height:1.32 !important;}',
       /* kill the empty modifiers row\'s 4px margin so the type + name lines sit flush (align with the tier) */
       'app-bip-summary:not(.rcz-skip) .summary-detail .summary-detail__modifiers{margin:0 !important;}',
@@ -728,7 +757,7 @@
       '.rcz-mem-info__row{font:700 15px/1.45 Roboto,Arial,sans-serif !important;color:#374151 !important;}',
       '.rcz-mem-info__row b{font-weight:900 !important;color:#111827 !important;}',
       '.rcz-mem-name{position:absolute !important;right:76px !important;bottom:12px !important;z-index:6 !important;display:flex !important;flex-direction:column !important;align-items:flex-end !important;justify-content:flex-end !important;white-space:nowrap !important;background:none !important;border:none !important;box-shadow:none !important;padding:0 !important;text-align:right !important;pointer-events:none !important;}',
-      '.rcz-mem-name__cat{font:600 18px/1.32 Roboto,Arial,sans-serif !important;color:#7b828c !important;}',
+      '.rcz-mem-name__cat{font:600 18px/1.32 Roboto,Arial,sans-serif !important;color:#111827 !important;}',
       '.rcz-mem-name__nm{font:800 18px/1.32 Roboto,Arial,sans-serif !important;color:#1f2933 !important;margin-top:0 !important;}',
       '.rcz-memstrip{position:absolute !important;left:0 !important;right:0 !important;bottom:70px !important;z-index:5 !important;pointer-events:none !important;background:#1f2429 !important;color:#fff !important;font:800 12px/1 Roboto,Arial,sans-serif !important;letter-spacing:.06em !important;text-align:center !important;padding:7px 8px !important;}',
       /* STATUS BAND — Name:/Photo: readout across the top of the tile (grey = fine, red = needs action) */
@@ -774,14 +803,15 @@
     if (href) a.setAttribute('data-rcz-href', href); else a.removeAttribute('data-rcz-href');
   }
   function clrAlert(w) { w.classList.remove('rcz-alert-on'); var a = w.querySelector('.rcz-alert'); if (a) a.remove(); }
-  function addCasual(w, name, category) {
+  function addCasual(w, name, category, tagLabel) {
     // New design: casual tiles carry no centre text — the person-icon placeholder, the "No Match Required"
-    // status band, and the name in the bottom bar already say everything. We keep a small "Casual Guest"
-    // tag in the bottom-left (styled via .rcz-casual) in place of a membership tier badge.
+    // status band, and the name in the bottom bar already say everything. We keep a small tag in the
+    // bottom-left (styled via .rcz-casual) in place of a membership tier badge — "Casual Guest" by default,
+    // or a partnership label like "Foster CARE Ticket" when passed.
     w.classList.add('rcz-casual-on');
     var c = w.querySelector('.rcz-casual');
     if (!c) { c = document.createElement('div'); c.className = 'rcz-casual'; w.appendChild(c); }
-    var html = '<span class="rcz-casual__tag">Casual Guest</span>';
+    var html = '<span class="rcz-casual__tag">' + esc(tagLabel || 'Casual Guest') + '</span>';
     if (c.getAttribute('data-h') !== html) { c.innerHTML = html; c.setAttribute('data-h', html); }
   }
   function clrCasual(w) { w.classList.remove('rcz-casual-on'); var c = w.querySelector('.rcz-casual'); if (c) c.remove(); }
@@ -1203,16 +1233,28 @@
             addAlert(w, memHref(info, cardId), cardId); clrCasual(w); clrMismatch(w); clrVisiting(w); clrNote(w); if (info.family) addActionReq(w, cardId, [{ label: 'Add individual names', href: memHref(info, cardId) }]); else clrActionReq(w); if (info.tier) addBadge(w, info.tier, memHref(info, cardId)); else clrBadge(w);
           }
         } else if (info && !info.pending && info.member === false) {
-          // casual (non-member) -> big guest name heading + "Casual <type> Booking" + sub-line
+          // casual (non-member) OR foster-care partner -> plain tile with a bottom-left tag. Foster guests
+          // get the "Foster CARE Ticket" tag in place of "Casual Guest"; everything else is identical.
           if (img) img.remove();
           var cnm = holderNameFor(w, cardId);
           var ccat = ((w.querySelector('.summary-detail__item--emphasis') || {}).textContent || '').trim();
-          addCasual(w, cnm, ccat); clrAlert(w); clrMismatch(w); clrVisiting(w); clrNote(w); clrBadge(w); clrActionReq(w);
+          addCasual(w, cnm, ccat, info.fosterCare ? CFG.FOSTER_LABEL : null); clrAlert(w); clrMismatch(w); clrVisiting(w); clrNote(w); clrBadge(w); clrActionReq(w);
         } else {
           // still loading / unknown -> plain placeholder, no overlay
           if (img) img.remove();
           if (icon) icon.style.display = '';
           clrAlert(w); clrCasual(w); clrMismatch(w); clrVisiting(w); clrNote(w); clrBadge(w); clrActionReq(w);
+        }
+        // #8/#9: when a member ticket recorded no name, surface the membership member's name at the bottom.
+        // Only fill an empty holder label (or one we previously filled) — never overwrite a real name ROLLER
+        // supplied; and clear our injected name if the card no longer carries one.
+        var hw = w.querySelector('.summary-detail__item-holder-wrapper');
+        if (hw) {
+          if (info && info.displayName && (!hw.textContent.trim() || hw.hasAttribute('data-rcz-name'))) {
+            if (hw.getAttribute('data-rcz-name') !== info.displayName) { hw.textContent = info.displayName; hw.setAttribute('data-rcz-name', info.displayName); }
+          } else if (hw.hasAttribute('data-rcz-name') && (!info || !info.displayName)) {
+            hw.textContent = ''; hw.removeAttribute('data-rcz-name');
+          }
         }
         // --- status band + prototype extras, independent of the card state above ---
         var si = statusInfo(w, info);
