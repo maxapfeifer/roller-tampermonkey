@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Venue — ROLLER Check-in Cards + Member Photos
 // @namespace    venue.roller.checkin-cards
-// @version      5.62
+// @version      5.63
 // @description  Reformats the ROLLER POS booking check-in list into full-frame photo cards, surfaces member photos on load (no Verify click), alerts when a member has no photo, handles family memberships (best-effort photos + add-name prompt) and close/similar name matches.
 // @match        https://pos.roller.app/*
 // @match        https://*.roller.app/*
@@ -42,6 +42,7 @@
     FOSTER_MATCH:     ['mfslumk', 'mackillop family services'],
     FOSTER_LABEL:     'Foster CARE Ticket',
     HIDE_REDEEM:      true,   // hide ROLLER's "Redeem membership" button everywhere
+    DONE_STEP_BACK:   true,   // after "Done" on a child member page, step back past the parent page it pushes
     // Age-type icons for casual/foster tiles (infant/child/adult), by ticket type. Populated with data:URIs
     // just below the CFG block (kept out of the literal so the base64 blobs don't clutter the config).
     AGE_ICONS:        {},
@@ -1383,12 +1384,32 @@
       } catch (e) { clearInterval(iv); }
     }, 120);
   }
+  // After ROLLER's "Done" saves and pushes the parent account page (the child path minus its last /id),
+  // step back past it AND the child edit page (history.go(-2)) so staff land back where they came from
+  // (e.g. the booking check-in) instead of the parent membership page.
+  function scheduleDoneReturn(childPath) {
+    if (!/^\/search\/memberships\/\d+\/\d+/.test(childPath)) return;
+    var parent = childPath.replace(/\/\d+\/?$/, '');
+    var tries = 0;
+    var iv = setInterval(function () {
+      tries++;
+      if (location.pathname === parent) { clearInterval(iv); try { history.go(-2); } catch (e) {} }
+      else if (tries > 30) clearInterval(iv);  // ~3s: Done was cancelled or navigated elsewhere
+    }, 100);
+  }
   function installBadgeLinkNav() {
     if (window.__rczBadgeNav) return; window.__rczBadgeNav = true;
     document.addEventListener('click', function (ev) {
       try {
         if (ev.defaultPrevented) return;
         if (ev.button !== 0 || ev.metaKey || ev.ctrlKey || ev.shiftKey || ev.altKey) return; // let new-tab etc. through
+        // "Done" on a child member page: let ROLLER save, then step back past the parent account page it
+        // pushes (and the child edit page) to where the user actually came from. No preventDefault — the
+        // save + native navigation must run; we only correct the destination afterwards.
+        if (CFG.DONE_STEP_BACK && ev.target && ev.target.closest && ev.target.closest('#bip-guest-details-save-changes') && membershipDetailRoute()) {
+          scheduleDoneReturn(location.pathname);
+          return;
+        }
         // ACTION-REQUIRED / "Add" links: unlock this card's shield (and, if the link carries an href,
         // forward to the member's tab so staff can add the photo/name) — nothing else.
         var unl = ev.target && ev.target.closest ? ev.target.closest('[data-rcz-unlock]') : null;
