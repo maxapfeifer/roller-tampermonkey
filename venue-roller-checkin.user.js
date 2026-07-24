@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Venue — ROLLER Check-in Cards + Member Photos
 // @namespace    venue.roller.checkin-cards
-// @version      5.44
+// @version      5.45
 // @description  Reformats the ROLLER POS booking check-in list into full-frame photo cards, surfaces member photos on load (no Verify click), alerts when a member has no photo, handles family memberships (best-effort photos + add-name prompt) and close/similar name matches.
 // @match        https://pos.roller.app/*
 // @match        https://*.roller.app/*
@@ -916,8 +916,8 @@
   function memberNote(w, info, cardId) {
     if (info.family) { addActionReq(w, cardId, [{ label: 'Add individual names', href: memHref(info) }]); clrNote(w); }
     else if (info.closematch) { addActionReq(w, cardId, [{ label: 'Add a ticket' }, { label: 'Pass nickname' }]); clrNote(w); }
-    else if (info.paidMember) addNote(w, 'paidmember', firstNameOnCard(w), ticketTypeOfPart(info.recipPart));
-    else clrNote(w);
+    else if (info.paidMember) { addNote(w, 'paidmember', firstNameOnCard(w), ticketTypeOfPart(info.recipPart)); clrActionReq(w); }
+    else { clrNote(w); clrActionReq(w); }
   }
   function addBadge(w, tier, href) {
     var gold = tier === 'gold';
@@ -976,7 +976,7 @@
   function statusInfo(w, info) {
     if (!info || info.pending) return null;
     var hasPhoto = !!w.querySelector('img.rcz-photo');
-    if (info.member === false && !info.misaligned) return { nm: 'No Match Required', nmW: false, ph: 'No Match Required', phW: false };
+    if (info.member === false && !info.misaligned) return null;  // casual guests: no top status band at all
     if (info.misaligned || info.paidMember)        return { nm: 'Mismatched (assignment error only)', nmW: true, ph: hasPhoto ? 'Showing' : 'No Match Required', phW: false };
     if (info.mismatch)                             return { nm: 'Not Matching', nmW: true, ph: hasPhoto ? 'Yes, see below' : 'Required Today (Add)', phW: !hasPhoto };
     if (info.family)                               return { nm: 'Names Required', nmW: true, ph: hasPhoto ? 'Showing' : 'Required Today', phW: !hasPhoto };
@@ -1078,7 +1078,6 @@
         var btn = w.querySelector('button[id^="booking-details-button-"]'); if (!btn) return;
         var cardId = btn.id.replace('booking-details-button-', '');
         var info = state.byCard[cardId];
-        clrActionReq(w);
         ensureBotBar(w);
         var icon = btn.querySelector('mat-icon');
         var img = btn.querySelector('img.rcz-photo');
@@ -1106,7 +1105,7 @@
           if (img) img.remove();
           var xnm = holderNameFor(w, cardId);
           var xcat = ((w.querySelector('.summary-detail__item--emphasis') || {}).textContent || '').trim();
-          addCasual(w, xnm, xcat); clrAlert(w); clrMismatch(w); clrVisiting(w); clrBadge(w);
+          addCasual(w, xnm, xcat); clrAlert(w); clrMismatch(w); clrVisiting(w); clrBadge(w); clrActionReq(w);
           addNote(w, 'misaligned');
         } else if (info && info.mismatch) {
           // member ticket whose name doesn't match its membership -> name-mismatch alert (dynamic note).
@@ -1126,7 +1125,7 @@
           // visiting overlay dropped from the redesign — a visiting member with no photo is treated
           // like any other no-photo member (standard "requires photo" alert), no "visiting" banner.
           if (img) img.remove();
-          addAlert(w, memHref(info), cardId); clrCasual(w); clrMismatch(w); clrVisiting(w); clrNote(w); if (info.tier) addBadge(w, info.tier, memHref(info)); else clrBadge(w);
+          addAlert(w, memHref(info), cardId); clrCasual(w); clrMismatch(w); clrVisiting(w); clrNote(w); clrActionReq(w); if (info.tier) addBadge(w, info.tier, memHref(info)); else clrBadge(w);
         } else if (info && !info.pending && info.member) {
           var np = nativePhotoImg(btn);
           if (np) {
@@ -1148,19 +1147,19 @@
           } else {
             // matched member, genuinely no photo on file -> "requires photo" alert
             if (img) img.remove();
-            addAlert(w, memHref(info), cardId); clrCasual(w); clrMismatch(w); clrVisiting(w); clrNote(w); if (info.tier) addBadge(w, info.tier, memHref(info)); else clrBadge(w);
+            addAlert(w, memHref(info), cardId); clrCasual(w); clrMismatch(w); clrVisiting(w); clrNote(w); clrActionReq(w); if (info.tier) addBadge(w, info.tier, memHref(info)); else clrBadge(w);
           }
         } else if (info && !info.pending && info.member === false) {
           // casual (non-member) -> big guest name heading + "Casual <type> Booking" + sub-line
           if (img) img.remove();
           var cnm = holderNameFor(w, cardId);
           var ccat = ((w.querySelector('.summary-detail__item--emphasis') || {}).textContent || '').trim();
-          addCasual(w, cnm, ccat); clrAlert(w); clrMismatch(w); clrVisiting(w); clrNote(w); clrBadge(w);
+          addCasual(w, cnm, ccat); clrAlert(w); clrMismatch(w); clrVisiting(w); clrNote(w); clrBadge(w); clrActionReq(w);
         } else {
           // still loading / unknown -> plain placeholder, no overlay
           if (img) img.remove();
           if (icon) icon.style.display = '';
-          clrAlert(w); clrCasual(w); clrMismatch(w); clrVisiting(w); clrNote(w); clrBadge(w);
+          clrAlert(w); clrCasual(w); clrMismatch(w); clrVisiting(w); clrNote(w); clrBadge(w); clrActionReq(w);
         }
         // --- status band + prototype extras, independent of the card state above ---
         var si = statusInfo(w, info);
