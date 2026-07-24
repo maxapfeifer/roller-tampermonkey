@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Venue — ROLLER Check-in Cards + Member Photos
 // @namespace    venue.roller.checkin-cards
-// @version      5.56
+// @version      5.57
 // @description  Reformats the ROLLER POS booking check-in list into full-frame photo cards, surfaces member photos on load (no Verify click), alerts when a member has no photo, handles family memberships (best-effort photos + add-name prompt) and close/similar name matches.
 // @match        https://pos.roller.app/*
 // @match        https://*.roller.app/*
@@ -995,7 +995,8 @@
   }
   // add the family / close-match / mis-assigned note to a member photo card (shared by both photo paths)
   function memberNote(w, info, cardId) {
-    if (info.family) { addActionReq(w, cardId, [{ label: 'Add individual names', href: memHref(info, cardId) }]); clrNote(w); }
+    var hasPhoto = !!w.querySelector('img.rcz-photo');
+    if (info.family) { addActionReq(w, cardId, memberActions(w, info, cardId, hasPhoto)); clrNote(w); }
     else if (info.closematch) { addActionReq(w, cardId, [{ label: 'Add a ticket' }, { label: 'Pass nickname' }]); clrNote(w); }
     else if (info.paidMember) { addNote(w, 'paidmember', firstNameOnCard(w), ticketTypeOfPart(info.recipPart)); clrActionReq(w); }
     else { clrNote(w); clrActionReq(w); }
@@ -1079,12 +1080,34 @@
     var el = w.querySelector('.rcz-actreq');
     if (!el) { el = document.createElement('div'); el.className = 'rcz-actreq'; w.appendChild(el); }
     var links = actions.map(function (a) {
-      return '<a href="#" data-rcz-unlock="' + cardId + '"' + (a.href ? ' data-rcz-href="' + esc(a.href) + '"' : '') + '>' + esc(a.label) + '</a>';
+      return '<a href="#" data-rcz-unlock="' + esc(cardId) + '"' + (a.kind ? ' data-rcz-act="' + esc(a.kind) + '"' : '') + (a.href ? ' data-rcz-href="' + esc(a.href) + '"' : '') + '>' + esc(a.label) + '</a>';
     }).join('');
     var html = '<div class="rcz-actreq__hd">ACTION REQUIRED:</div><div class="rcz-actreq__links">' + links + '</div>';
     if (el.getAttribute('data-h') !== html) { el.innerHTML = html; el.setAttribute('data-h', html); }
   }
   function clrActionReq(w) { var el = w.querySelector('.rcz-actreq'); if (el) el.remove(); }
+  // The two things a member card can require before check-in, as ACTION REQUIRED links (#6): ADD NAME (for a
+  // family slot with no individual name) and/or ADD PHOTO (no photo on file). ADD NAME forwards to the Guest
+  // tab (kind 'name'); ADD PHOTO opens ROLLER's native verification panel in place (kind 'photo', see #3).
+  function memberActions(w, info, cardId, hasPhoto) {
+    var acts = [];
+    if (info.family) acts.push({ label: 'ADD NAME', kind: 'name', href: memHref(info, cardId) });
+    if (!hasPhoto)   acts.push({ label: 'ADD PHOTO', kind: 'photo', href: memHref(info, cardId) });
+    return acts;
+  }
+  // Open ROLLER's own "Verify membership discount(s)" panel (the right-sliding photo-capture dialog) by
+  // clicking the Verify button in its banner — reveals image capture in place, no navigation. Works for
+  // visiting members too (booking-level, no pill needed). Returns true if the button was found + clicked.
+  function openVerifyPanel() {
+    var banner = document.getElementById('booking-membership-verification-banner');
+    var btn = banner ? banner.querySelector('button') : null;
+    if (!btn) {
+      var all = document.querySelectorAll('button');
+      for (var i = 0; i < all.length; i++) { if ((all[i].textContent || '').trim() === 'Verify') { btn = all[i]; break; } }
+    }
+    if (btn) { btn.click(); return true; }
+    return false;
+  }
   // ---- membership card treatment (photo fill + "Membership Found" panel) ----
   function renderMembership(w, host) {
     var btn = w.querySelector('button[id^="booking-details-button-"]');
@@ -1208,7 +1231,7 @@
           // visiting overlay dropped from the redesign — a visiting member with no photo is treated
           // like any other no-photo member (standard "requires photo" alert), no "visiting" banner.
           if (img) img.remove();
-          addAlert(w, memHref(info, cardId), cardId); clrCasual(w); clrMismatch(w); clrVisiting(w); clrNote(w); if (info.family) addActionReq(w, cardId, [{ label: 'Add individual names', href: memHref(info, cardId) }]); else clrActionReq(w); if (info.tier) addBadge(w, info.tier, memHref(info, cardId)); else clrBadge(w);
+          clrAlert(w); clrCasual(w); clrMismatch(w); clrVisiting(w); clrNote(w); addActionReq(w, cardId, memberActions(w, info, cardId, false)); if (info.tier) addBadge(w, info.tier, memHref(info, cardId)); else clrBadge(w);
         } else if (info && !info.pending && info.member) {
           var np = nativePhotoImg(btn);
           if (np) {
@@ -1230,7 +1253,7 @@
           } else {
             // matched member, genuinely no photo on file -> "requires photo" alert
             if (img) img.remove();
-            addAlert(w, memHref(info, cardId), cardId); clrCasual(w); clrMismatch(w); clrVisiting(w); clrNote(w); if (info.family) addActionReq(w, cardId, [{ label: 'Add individual names', href: memHref(info, cardId) }]); else clrActionReq(w); if (info.tier) addBadge(w, info.tier, memHref(info, cardId)); else clrBadge(w);
+            clrAlert(w); clrCasual(w); clrMismatch(w); clrVisiting(w); clrNote(w); addActionReq(w, cardId, memberActions(w, info, cardId, false)); if (info.tier) addBadge(w, info.tier, memHref(info, cardId)); else clrBadge(w);
           }
         } else if (info && !info.pending && info.member === false) {
           // casual (non-member) OR foster-care partner -> plain tile with a bottom-left tag. Foster guests
@@ -1326,8 +1349,10 @@
           if (uid) state.unlocked[uid] = true;
           var uhost = unl.closest ? unl.closest('.summary__wrapper') : null;
           if (uhost) uhost.classList.remove('rcz-locked');
+          var uact = unl.getAttribute('data-rcz-act');
+          if (uact === 'photo') { openVerifyPanel(); return; }    // ADD PHOTO -> ROLLER's native verify panel, in place (#3)
           var uhref = unl.getAttribute('data-rcz-href');
-          if (uhref && forwardToPill(uhref)) openGuestTabSoon();  // land on the Guest tab (add photo/name there)
+          if (uhref && forwardToPill(uhref)) openGuestTabSoon();  // ADD NAME -> the member's Guest tab (name field)
           return;
         }
         // A) the tier badge link -> membership detail, else fall back to the card's tile
@@ -1354,6 +1379,13 @@
         if (tileBtn) {
           var tcid = tileBtn.id.replace('booking-details-button-', '');
           var tinfo = state.byCard[tcid];
+          // grey tile centre of a member with NO photo on file -> open ROLLER's native verify/photo panel in
+          // place (#3/#7) rather than navigating. Works for visiting members too (no pill required).
+          var tHost = tileBtn.closest('app-bip-summary');
+          var tHasPhoto = tHost ? !!tHost.querySelector('img.rcz-photo') : true;
+          if (tinfo && tinfo.member && !tinfo.misaligned && !tinfo.paidMember && !tHasPhoto) {
+            ev.preventDefault(); ev.stopImmediatePropagation(); openVerifyPanel(); return;
+          }
           var thref = tinfo ? memHref(tinfo, tcid) : null;
           if (thref && forwardToPill(thref)) { ev.preventDefault(); ev.stopImmediatePropagation(); openGuestTabSoon(); return; }
           // fallback: a card still carrying the legacy alert data-rcz-href
