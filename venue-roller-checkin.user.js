@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Venue — ROLLER Check-in Cards + Member Photos
 // @namespace    venue.roller.checkin-cards
-// @version      5.43
+// @version      5.44
 // @description  Reformats the ROLLER POS booking check-in list into full-frame photo cards, surfaces member photos on load (no Verify click), alerts when a member has no photo, handles family memberships (best-effort photos + add-name prompt) and close/similar name matches.
 // @match        https://pos.roller.app/*
 // @match        https://*.roller.app/*
@@ -1233,7 +1233,7 @@
           var uhost = unl.closest ? unl.closest('.summary__wrapper') : null;
           if (uhost) uhost.classList.remove('rcz-locked');
           var uhref = unl.getAttribute('data-rcz-href');
-          if (uhref) forwardToPill(uhref);
+          if (uhref && forwardToPill(uhref)) openGuestTabSoon();  // land on the Guest tab (add photo/name there)
           return;
         }
         // A) the tier badge link -> membership detail, else fall back to the card's tile
