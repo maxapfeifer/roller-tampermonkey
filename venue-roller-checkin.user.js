@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Venue — ROLLER Check-in Cards + Member Photos
 // @namespace    venue.roller.checkin-cards
-// @version      5.42
+// @version      5.43
 // @description  Reformats the ROLLER POS booking check-in list into full-frame photo cards, surfaces member photos on load (no Verify click), alerts when a member has no photo, handles family memberships (best-effort photos + add-name prompt) and close/similar name matches.
 // @match        https://pos.roller.app/*
 // @match        https://*.roller.app/*
@@ -607,7 +607,7 @@
       /* overlays ON TOP of the photo */
       /* select checkbox hidden in the new design */
       'app-bip-summary:not(.rcz-skip) .summary__wrapper mat-checkbox.align-top--checkbox{display:none !important;}',
-      'app-bip-summary:not(.rcz-skip) .summary__wrapper .summary-detail{position:absolute !important;right:70px !important;left:auto !important;bottom:14px !important;flex:none !important;width:auto !important;max-width:44% !important;background:none !important;border:none !important;border-radius:0 !important;padding:0 !important;box-shadow:none !important;z-index:6 !important;text-align:right !important;}',
+      'app-bip-summary:not(.rcz-skip) .summary__wrapper .summary-detail{position:absolute !important;right:76px !important;left:auto !important;bottom:18px !important;flex:none !important;width:auto !important;max-width:44% !important;background:none !important;border:none !important;border-radius:0 !important;padding:0 !important;box-shadow:none !important;z-index:6 !important;text-align:right !important;}',
       'app-bip-summary:not(.rcz-skip) .summary-detail p.summary-detail__item:not(.summary-detail__item--emphasis){display:none !important;}',
       /* category ("Adult") smaller & muted; name ("Erin") larger, dark, bold */
       'app-bip-summary:not(.rcz-skip) .summary-detail .summary-detail__item--emphasis{font-size:18px !important;font-weight:600 !important;color:#7b828c !important;margin:0 !important;line-height:1.32 !important;}',
@@ -618,7 +618,7 @@
       /* bottom in to ~32px (tight, but enough that ROLLER\'s verify banner clears the row) */
       '.panel__header:has(.bip-list-header){padding-top:6px !important;padding-bottom:32px !important;}',
       'app-bip-summary:not(.rcz-skip) .summary__wrapper .summary-detail-time{display:none !important;}',
-      'app-bip-summary:not(.rcz-skip) .summary__wrapper app-icon-button.align-top:has(button[id^="check-in-button"]){position:absolute !important;right:12px !important;bottom:11px !important;margin:0 !important;z-index:6 !important;}',
+      'app-bip-summary:not(.rcz-skip) .summary__wrapper app-icon-button.align-top:has(button[id^="check-in-button"]){position:absolute !important;right:18px !important;bottom:18px !important;margin:0 !important;z-index:6 !important;}',
       /* check-in button: 66px square sized to the name-label height; glyph scaled to match. Full box
          stays clickable; the shield (when on) is drawn as ::before so the whole square still taps. */
       'app-bip-summary:not(.rcz-skip) .summary__wrapper app-icon-button.align-top:has(button[id^="check-in-button"]) button{width:48px !important;height:48px !important;min-width:48px !important;min-height:48px !important;padding:0 !important;position:relative !important;overflow:visible !important;' + (CFG.SHOW_SHIELD ? 'background:transparent !important;border:none !important;box-shadow:none !important;border-radius:0 !important;' : 'border-radius:12px !important;box-shadow:0 2px 8px rgba(0,0,0,.35) !important;') + '}',
@@ -641,7 +641,7 @@
       '.rcz-alert__body{font:800 12px/1.28 Roboto,Arial,sans-serif !important;}',
       'app-bip-summary:not(.rcz-skip) .summary__wrapper.rcz-alert-on button[id^="booking-details-button"] mat-icon{display:none !important;}',
       /* CASUAL (non-member) — calm grey, same card-filling layout; icon hidden */
-      '.rcz-casual{position:absolute !important;left:12px !important;bottom:12px !important;z-index:6 !important;pointer-events:none !important;}',
+      '.rcz-casual{position:absolute !important;left:16px !important;bottom:18px !important;z-index:6 !important;pointer-events:none !important;}',
       '.rcz-casual__tag{font:700 18px/1.32 Roboto,Arial,sans-serif !important;color:#565d66 !important;}',
       /* big near-black NAME, then the ticket TYPE, then the small grey casual sub-line */
       '.rcz-casual__name{font:900 48px/1.02 Roboto,Arial,sans-serif !important;color:#111827 !important;letter-spacing:.01em !important;}',
@@ -669,7 +669,7 @@
       /* MEMBERSHIP TIER badge — small pill low over the photo */
       /* membership tag, bottom-LEFT: two lines ("Membership" over the tier), dark border. */
       /* min-height 66px so the tag matches the name label + shield heights (Tom\'s "similar heights" mock) */
-      '.rcz-badge{position:absolute !important;left:12px !important;right:auto !important;bottom:14px !important;z-index:6 !important;display:flex !important;flex-direction:column !important;align-items:flex-start !important;justify-content:flex-end !important;gap:0 !important;white-space:nowrap !important;text-align:left !important;pointer-events:none !important;background:none !important;border:none !important;box-shadow:none !important;padding:0 !important;}',
+      '.rcz-badge{position:absolute !important;left:16px !important;right:auto !important;bottom:18px !important;z-index:6 !important;display:flex !important;flex-direction:column !important;align-items:flex-start !important;justify-content:flex-end !important;gap:0 !important;white-space:nowrap !important;text-align:left !important;pointer-events:none !important;background:none !important;border:none !important;box-shadow:none !important;padding:0 !important;}',
       '.rcz-badge__tier{font:700 18px/1.32 Roboto,Arial,sans-serif !important;color:#2f6fed !important;}',
       '.rcz-badge__lbl{font:700 18px/1.32 Roboto,Arial,sans-serif !important;color:#2f6fed !important;}',
       '.rcz-badge--gold .rcz-badge__tier,.rcz-badge--gold .rcz-badge__lbl,.rcz-badge--wonder .rcz-badge__tier,.rcz-badge--wonder .rcz-badge__lbl{color:#2f6fed !important;}',
@@ -708,7 +708,7 @@
       '.rcz-mem-info__hd{font:900 22px/1.15 Roboto,Arial,sans-serif !important;color:#111827 !important;margin-bottom:3px !important;}',
       '.rcz-mem-info__row{font:700 15px/1.45 Roboto,Arial,sans-serif !important;color:#374151 !important;}',
       '.rcz-mem-info__row b{font-weight:900 !important;color:#111827 !important;}',
-      '.rcz-mem-name{position:absolute !important;right:70px !important;bottom:14px !important;z-index:6 !important;display:flex !important;flex-direction:column !important;align-items:flex-end !important;justify-content:flex-end !important;white-space:nowrap !important;background:none !important;border:none !important;box-shadow:none !important;padding:0 !important;text-align:right !important;pointer-events:none !important;}',
+      '.rcz-mem-name{position:absolute !important;right:76px !important;bottom:18px !important;z-index:6 !important;display:flex !important;flex-direction:column !important;align-items:flex-end !important;justify-content:flex-end !important;white-space:nowrap !important;background:none !important;border:none !important;box-shadow:none !important;padding:0 !important;text-align:right !important;pointer-events:none !important;}',
       '.rcz-mem-name__cat{font:600 18px/1.32 Roboto,Arial,sans-serif !important;color:#7b828c !important;}',
       '.rcz-mem-name__nm{font:800 18px/1.32 Roboto,Arial,sans-serif !important;color:#1f2933 !important;margin-top:0 !important;}',
       '.rcz-memstrip{position:absolute !important;left:0 !important;right:0 !important;bottom:70px !important;z-index:5 !important;pointer-events:none !important;background:#1f2429 !important;color:#fff !important;font:800 12px/1 Roboto,Arial,sans-serif !important;letter-spacing:.06em !important;text-align:center !important;padding:7px 8px !important;}',
