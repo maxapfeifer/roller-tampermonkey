@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Venue — ROLLER Check-in Cards + Member Photos
 // @namespace    venue.roller.checkin-cards
-// @version      5.52
+// @version      5.53
 // @description  Reformats the ROLLER POS booking check-in list into full-frame photo cards, surfaces member photos on load (no Verify click), alerts when a member has no photo, handles family memberships (best-effort photos + add-name prompt) and close/similar name matches.
 // @match        https://pos.roller.app/*
 // @match        https://*.roller.app/*
@@ -856,6 +856,22 @@
     } catch (e) {}
     return null;
   }
+  // Has this card's family slot been individually NAMED yet? Reads the live blue pills (which update the
+  // instant staff add a name in the member's Guest tab): a slot whose pill name is UNIQUE among the
+  // booking's pills has been named; a name repeated across slots is still the defaulted account-holder
+  // name (still un-named). Lets us drop the "Add individual names" prompt for slots that are now done.
+  function slotNamed(cardId) {
+    var pills = document.querySelectorAll('a[id^="membership-discount-link-"]');
+    if (pills.length < 2) return false;
+    var counts = {}, mine = null;
+    for (var i = 0; i < pills.length; i++) {
+      var nm = (pills[i].textContent || '').replace(/^\s*member:\s*/i, '').replace(/\s+/g, ' ').trim().toLowerCase();
+      counts[nm] = (counts[nm] || 0) + 1;
+      var id = pills[i].id.replace('membership-discount-link-', '');
+      if (state.discountIndex[id] && String(state.discountIndex[id].cardId) === String(cardId)) mine = nm;
+    }
+    return !!(mine && counts[mine] === 1);
+  }
   function memHref(info, cardId) {
     if (!CFG.LINK_MEMBERSHIP_BADGE) return null;
     var slot = cardMemberHref(cardId); if (slot) return slot;   // prefer this card's own slot
@@ -1095,6 +1111,8 @@
         var btn = w.querySelector('button[id^="booking-details-button-"]'); if (!btn) return;
         var cardId = btn.id.replace('booking-details-button-', '');
         var info = state.byCard[cardId];
+        // once staff have named this family slot (live pills), drop the "Add individual names" ask for it
+        if (info && info.family && slotNamed(cardId)) info = Object.assign({}, info, { family: false });
         ensureBotBar(w);
         var icon = btn.querySelector('mat-icon');
         var img = btn.querySelector('img.rcz-photo');
