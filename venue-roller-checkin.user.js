@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Venue — ROLLER Check-in Cards + Member Photos
 // @namespace    venue.roller.checkin-cards
-// @version      5.65
+// @version      5.66
 // @description  Reformats the ROLLER POS booking check-in list into full-frame photo cards, surfaces member photos on load (no Verify click), alerts when a member has no photo, handles family memberships (best-effort photos + add-name prompt) and close/similar name matches.
 // @match        https://pos.roller.app/*
 // @match        https://*.roller.app/*
@@ -43,6 +43,8 @@
     FOSTER_LABEL:     'Foster CARE Ticket',
     HIDE_REDEEM:      true,   // hide ROLLER's "Redeem membership" button everywhere
     DONE_STEP_BACK:   true,   // after "Done" on a child member page, step back past the parent page it pushes
+    WARN_HEADING:     'WARNING: MISSING DATA!',                  // ACTION REQUIRED banner big heading
+    WARN_SUB:         'COMPLETE PROFILE TO AVOID CANCELLATION',  // ACTION REQUIRED banner sub-line
     // Age-type icons for casual/foster tiles (infant/child/adult), by ticket type. Populated with data:URIs
     // just below the CFG block (kept out of the literal so the base64 blobs don't clutter the config).
     AGE_ICONS:        {},
@@ -799,7 +801,8 @@
       'app-bip-summary:not(.rcz-skip) .summary__wrapper.rcz-locked button[id^="check-in-button"]{pointer-events:none !important;opacity:.34 !important;filter:grayscale(.7) !important;}',
       /* ACTION REQUIRED prompt — frosted banner with tappable links */
       '.rcz-actreq{position:absolute !important;left:50% !important;right:auto !important;transform:translateX(-50%) !important;max-width:calc(100% - 24px) !important;bottom:76px !important;z-index:6 !important;pointer-events:none !important;background:rgba(255,255,255,.86) !important;-webkit-backdrop-filter:blur(4px) !important;backdrop-filter:blur(4px) !important;border-radius:11px !important;padding:9px 16px 10px !important;box-shadow:0 2px 9px rgba(0,0,0,.17) !important;text-align:center !important;}',
-      '.rcz-actreq__hd{font:800 13px/1.1 Roboto,Arial,sans-serif !important;letter-spacing:.05em !important;color:#e5231b !important;}',
+      '.rcz-actreq__hd{font:800 15.5px/1.12 Roboto,Arial,sans-serif !important;letter-spacing:.01em !important;color:#e5231b !important;}',
+      '.rcz-actreq__sub{font:700 10.5px/1.25 Roboto,Arial,sans-serif !important;letter-spacing:.02em !important;color:#a12a20 !important;margin-top:3px !important;}',
       '.rcz-actreq__links{display:flex !important;gap:16px !important;justify-content:center !important;margin-top:5px !important;flex-wrap:wrap !important;}',
       '.rcz-actreq a,.rcz-addlink{color:#2f6fed !important;text-decoration:underline !important;text-underline-offset:2px !important;pointer-events:auto !important;cursor:pointer !important;font:700 12px/1 Roboto,Arial,sans-serif !important;}',
       '.rcz-addlink{font-size:16px !important;margin-left:8px !important;}'
@@ -1123,7 +1126,9 @@
     var links = actions.map(function (a) {
       return '<a href="#" data-rcz-unlock="' + esc(cardId) + '"' + (a.kind ? ' data-rcz-act="' + esc(a.kind) + '"' : '') + (a.href ? ' data-rcz-href="' + esc(a.href) + '"' : '') + '>' + esc(a.label) + '</a>';
     }).join('');
-    var html = '<div class="rcz-actreq__hd">ACTION REQUIRED:</div><div class="rcz-actreq__links">' + links + '</div>';
+    var html = '<div class="rcz-actreq__hd">' + esc(CFG.WARN_HEADING) + '</div>' +
+               '<div class="rcz-actreq__sub">' + esc(CFG.WARN_SUB) + '</div>' +
+               '<div class="rcz-actreq__links">' + links + '</div>';
     if (el.getAttribute('data-h') !== html) { el.innerHTML = html; el.setAttribute('data-h', html); }
   }
   function clrActionReq(w) { var el = w.querySelector('.rcz-actreq'); if (el) el.remove(); }
@@ -1204,6 +1209,7 @@
   function render() {
     try {
       injectGlobalStyle();
+      hideRedeemButtons();
       if (membershipDetailRoute()) ensureBackButtons(); else removeBackButtons();
       if (!activeRoute()) {
         // not the booking check-in list -> strip our styling/overlays so ROLLER's native pages work
@@ -1489,6 +1495,19 @@
     var s = document.createElement('style'); s.id = 'rcz-global';
     s.textContent = '#redeem-membership-button,app-generic-button:has(#redeem-membership-button){display:none !important;}';
     document.head.appendChild(s);
+  }
+  // The CSS above catches the Redeem button when it carries its id; on some membership states ROLLER renders
+  // it WITHOUT the id (so CSS can't match it — you can't select by text). Hide any button reading exactly
+  // "Redeem membership" here, and its app-generic-button wrapper.
+  function hideRedeemButtons() {
+    if (!CFG.HIDE_REDEEM) return;
+    var btns = document.querySelectorAll('button');
+    for (var i = 0; i < btns.length; i++) {
+      if (/^\s*redeem membership\s*$/i.test(btns[i].textContent || '')) {
+        var wrap = (btns[i].closest && btns[i].closest('app-generic-button')) || btns[i];
+        if (wrap.style.display !== 'none') wrap.style.display = 'none';
+      }
+    }
   }
   function boot() {
     injectGlobalStyle();
