@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Venue — ROLLER Check-in Cards + Member Photos
 // @namespace    venue.roller.checkin-cards
-// @version      5.45
+// @version      5.46
 // @description  Reformats the ROLLER POS booking check-in list into full-frame photo cards, surfaces member photos on load (no Verify click), alerts when a member has no photo, handles family memberships (best-effort photos + add-name prompt) and close/similar name matches.
 // @match        https://pos.roller.app/*
 // @match        https://*.roller.app/*
@@ -1125,7 +1125,7 @@
           // visiting overlay dropped from the redesign — a visiting member with no photo is treated
           // like any other no-photo member (standard "requires photo" alert), no "visiting" banner.
           if (img) img.remove();
-          addAlert(w, memHref(info), cardId); clrCasual(w); clrMismatch(w); clrVisiting(w); clrNote(w); clrActionReq(w); if (info.tier) addBadge(w, info.tier, memHref(info)); else clrBadge(w);
+          addAlert(w, memHref(info), cardId); clrCasual(w); clrMismatch(w); clrVisiting(w); clrNote(w); if (info.family) addActionReq(w, cardId, [{ label: 'Add individual names', href: memHref(info) }]); else clrActionReq(w); if (info.tier) addBadge(w, info.tier, memHref(info)); else clrBadge(w);
         } else if (info && !info.pending && info.member) {
           var np = nativePhotoImg(btn);
           if (np) {
@@ -1147,7 +1147,7 @@
           } else {
             // matched member, genuinely no photo on file -> "requires photo" alert
             if (img) img.remove();
-            addAlert(w, memHref(info), cardId); clrCasual(w); clrMismatch(w); clrVisiting(w); clrNote(w); clrActionReq(w); if (info.tier) addBadge(w, info.tier, memHref(info)); else clrBadge(w);
+            addAlert(w, memHref(info), cardId); clrCasual(w); clrMismatch(w); clrVisiting(w); clrNote(w); if (info.family) addActionReq(w, cardId, [{ label: 'Add individual names', href: memHref(info) }]); else clrActionReq(w); if (info.tier) addBadge(w, info.tier, memHref(info)); else clrBadge(w);
           }
         } else if (info && !info.pending && info.member === false) {
           // casual (non-member) -> big guest name heading + "Casual <type> Booking" + sub-line
