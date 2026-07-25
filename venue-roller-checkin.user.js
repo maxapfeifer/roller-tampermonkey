@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Venue — ROLLER Check-in Cards + Member Photos
 // @namespace    venue.roller.checkin-cards
-// @version      5.81
+// @version      5.82
 // @description  Reformats the ROLLER POS booking check-in list into full-frame photo cards, surfaces member photos on load (no Verify click), alerts when a member has no photo, handles family memberships (best-effort photos + add-name prompt) and close/similar name matches.
 // @match        https://pos.roller.app/*
 // @match        https://*.roller.app/*
@@ -791,7 +791,7 @@
       '.rcz-mem-name__cat{font:600 18px/1.32 Roboto,Arial,sans-serif !important;color:#111827 !important;}',
       '.rcz-mem-name__nm{font:800 18px/1.32 Roboto,Arial,sans-serif !important;color:#1f2933 !important;margin-top:0 !important;}',
       /* NAME-MISMATCH comparison, bottom-right: black labels, red values, right-aligned, clears the shield */
-      '.rcz-mmnames{position:absolute !important;right:84px !important;bottom:12px !important;z-index:6 !important;display:flex !important;flex-direction:column !important;align-items:flex-end !important;gap:1px !important;white-space:nowrap !important;text-align:right !important;pointer-events:none !important;}',
+      '.rcz-mmnames{position:absolute !important;right:76px !important;bottom:12px !important;z-index:6 !important;display:flex !important;flex-direction:column !important;align-items:flex-end !important;gap:1px !important;white-space:nowrap !important;text-align:right !important;pointer-events:none !important;}',
       '.rcz-mmnames__row{font:700 18px/1.32 Roboto,Arial,sans-serif !important;}',
       '.rcz-mmnames__lbl{color:#111827 !important;}',
       '.rcz-mmnames__val{color:#e5231b !important;margin-left:5px !important;}',
@@ -1152,9 +1152,9 @@
     var hasPhoto = !!w.querySelector('img.rcz-photo');
     if (info.member === false && !info.misaligned) return null;  // casual guests: no top status band at all
     if (info.misaligned || info.paidMember)        return { nm: 'Mismatched (assignment error only)', nmW: true, ph: hasPhoto ? 'Showing' : 'No Match Required', phW: false };
-    if (info.mismatch)                             return { nm: 'Not Matching', nmW: true, ph: hasPhoto ? 'Yes, see below' : 'Required Today (Add)', phW: !hasPhoto };
+    if (info.mismatch)                             return { nm: 'Not Matching', nmW: true, ph: hasPhoto ? 'Showing' : 'Required Today (Add)', phW: !hasPhoto };
     if (info.family)                               return { nm: 'Names Required', nmW: true, ph: hasPhoto ? 'Showing' : 'Required Today', phW: !hasPhoto };
-    if (info.closematch)                           return { nm: 'Not Matching', nmW: true, ph: hasPhoto ? 'Yes, see below' : 'Required Today', phW: !hasPhoto };
+    if (info.closematch)                           return { nm: 'Not Matching', nmW: true, ph: hasPhoto ? 'Showing' : 'Required Today', phW: !hasPhoto };
     if (info.member)                               return { nm: 'Matched', nmW: false, ph: hasPhoto ? 'Showing' : 'Required Today', phW: !hasPhoto };
     return null;
   }
