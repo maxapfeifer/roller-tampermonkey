@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Venue — ROLLER Check-in Cards + Member Photos
 // @namespace    venue.roller.checkin-cards
-// @version      5.77
+// @version      5.78
 // @description  Reformats the ROLLER POS booking check-in list into full-frame photo cards, surfaces member photos on load (no Verify click), alerts when a member has no photo, handles family memberships (best-effort photos + add-name prompt) and close/similar name matches.
 // @match        https://pos.roller.app/*
 // @match        https://*.roller.app/*
@@ -43,9 +43,9 @@
     FOSTER_LABEL:     'Foster CARE Ticket',
     HIDE_REDEEM:      true,   // hide ROLLER's "Redeem membership" button everywhere
     DONE_STEP_BACK:   true,   // after "Done" on a child member page, step back past the parent page it pushes
-    WARN_HEADING:     'WARNING: MISSING DATA!',                  // ACTION REQUIRED banner big heading
+    WARN_HEADING:     'FRAUD WARNING: MISSING DATA',             // ACTION REQUIRED banner big heading
     WARN_SUB:         'COMPLETE PROFILE TO AVOID CANCELLATION',  // ACTION REQUIRED banner sub-line
-    MISMATCH_ACTREQ_HD: 'WARNING: NAME MIS-MATCH',               // heading on the name-mismatch action box (no sub-line)
+    MISMATCH_ACTREQ_HD: "FRAUD WARNING: NAME ON MEMBERSHIP DOESN'T MATCH NAME ON TICKET", // heading on the name-mismatch action box (no sub-line)
     // Age-type icons for casual/foster tiles (infant/child/adult), by ticket type. Populated with data:URIs
     // just below the CFG block (kept out of the literal so the base64 blobs don't clutter the config).
     AGE_ICONS:        {},
@@ -627,8 +627,8 @@
       if (mem && !CFG.SHOW_MEMBERSHIP) {                              // or leave it as ROLLER draws it
         if (!host.classList.contains('rcz-skip')) {
           host.classList.add('rcz-skip');
-          host.querySelectorAll('.rcz-alert,.rcz-casual,.rcz-mismatch,.rcz-visiting,.rcz-badge,.rcz-note,.rcz-bday,.rcz-meaning,.rcz-status,.rcz-actreq,.rcz-nameact,.rcz-botbar,.rcz-memstrip,.rcz-mem-info,.rcz-mem-name,img.rcz-photo').forEach(function (e) { e.remove(); });
-          host.querySelectorAll('.rcz-alert-on,.rcz-casual-on,.rcz-mismatch-on,.rcz-visiting-on').forEach(function (w) { w.classList.remove('rcz-alert-on', 'rcz-casual-on', 'rcz-mismatch-on', 'rcz-visiting-on'); });
+          host.querySelectorAll('.rcz-alert,.rcz-casual,.rcz-mismatch,.rcz-visiting,.rcz-badge,.rcz-note,.rcz-bday,.rcz-meaning,.rcz-status,.rcz-actreq,.rcz-nameact,.rcz-botbar,.rcz-memstrip,.rcz-mem-info,.rcz-mem-name,.rcz-mmnames,img.rcz-photo').forEach(function (e) { e.remove(); });
+          host.querySelectorAll('.rcz-alert-on,.rcz-casual-on,.rcz-mismatch-on,.rcz-visiting-on,.rcz-mmnames-on').forEach(function (w) { w.classList.remove('rcz-alert-on', 'rcz-casual-on', 'rcz-mismatch-on', 'rcz-visiting-on', 'rcz-mmnames-on'); });
         }
       } else {
         host.classList.remove('rcz-skip');
@@ -790,6 +790,12 @@
       '.rcz-mem-name{position:absolute !important;right:76px !important;bottom:12px !important;z-index:6 !important;display:flex !important;flex-direction:column !important;align-items:flex-end !important;justify-content:flex-end !important;white-space:nowrap !important;background:none !important;border:none !important;box-shadow:none !important;padding:0 !important;text-align:right !important;pointer-events:none !important;}',
       '.rcz-mem-name__cat{font:600 18px/1.32 Roboto,Arial,sans-serif !important;color:#111827 !important;}',
       '.rcz-mem-name__nm{font:800 18px/1.32 Roboto,Arial,sans-serif !important;color:#1f2933 !important;margin-top:0 !important;}',
+      /* NAME-MISMATCH comparison, bottom-right: black labels, red values, right-aligned, clears the shield */
+      '.rcz-mmnames{position:absolute !important;right:62px !important;bottom:12px !important;z-index:6 !important;display:flex !important;flex-direction:column !important;align-items:flex-end !important;gap:1px !important;white-space:nowrap !important;text-align:right !important;pointer-events:none !important;}',
+      '.rcz-mmnames__row{font:800 14px/1.28 Roboto,Arial,sans-serif !important;}',
+      '.rcz-mmnames__lbl{color:#111827 !important;}',
+      '.rcz-mmnames__val{color:#e5231b !important;margin-left:5px !important;}',
+      'app-bip-summary:not(.rcz-skip) .summary__wrapper.rcz-mmnames-on .summary-detail__item--emphasis,app-bip-summary:not(.rcz-skip) .summary__wrapper.rcz-mmnames-on .summary-detail__item-holder-wrapper{display:none !important;}',
       '.rcz-memstrip{position:absolute !important;left:0 !important;right:0 !important;bottom:70px !important;z-index:5 !important;pointer-events:none !important;background:#1f2429 !important;color:#fff !important;font:800 12px/1 Roboto,Arial,sans-serif !important;letter-spacing:.06em !important;text-align:center !important;padding:7px 8px !important;}',
       /* STATUS BAND — Name:/Photo: readout across the top of the tile (grey = fine, red = needs action) */
       '.rcz-status{position:absolute !important;top:0 !important;left:0 !important;right:0 !important;z-index:6 !important;pointer-events:none !important;background:rgba(255,255,255,.55) !important;-webkit-backdrop-filter:blur(6px) !important;backdrop-filter:blur(6px) !important;border-bottom:1px solid rgba(0,0,0,.07) !important;padding:8px 11px 5px 11px !important;font:400 12.5px/1.3 Roboto,Arial,sans-serif !important;color:#1f2933 !important;}',
@@ -813,11 +819,13 @@
       /* NAME-action box (fix #1): a second frosted card, identical style, stacked ABOVE the ADD PHOTO box on a
          no-photo close/mismatch tile. Its bottom is set in JS to clear the box below it. Reuses __hd/__links. */
       '.rcz-nameact{position:absolute !important;left:8px !important;right:8px !important;bottom:168px !important;z-index:6 !important;pointer-events:none !important;container-type:inline-size !important;background:rgba(255,255,255,.86) !important;-webkit-backdrop-filter:blur(4px) !important;backdrop-filter:blur(4px) !important;border-radius:13px !important;padding:12px 12px 13px !important;box-shadow:0 3px 12px rgba(0,0,0,.18) !important;text-align:center !important;}',
-      '.rcz-actreq__hd{font-family:Roboto,Arial,sans-serif !important;font-weight:800 !important;font-size:min(23px,6.5cqw) !important;line-height:1.12 !important;white-space:nowrap !important;letter-spacing:.01em !important;color:#e5231b !important;}',
+      '.rcz-actreq__hd{font-family:Roboto,Arial,sans-serif !important;font-weight:800 !important;font-size:min(23px,6.5cqw) !important;line-height:1.12 !important;white-space:normal !important;letter-spacing:.01em !important;color:#e5231b !important;}',
       '.rcz-actreq__sub{font-family:Roboto,Arial,sans-serif !important;font-weight:700 !important;font-size:min(15px,4.1cqw) !important;line-height:1.25 !important;white-space:nowrap !important;letter-spacing:.02em !important;color:#a12a20 !important;margin-top:5px !important;}',
-      '.rcz-actreq__links{display:flex !important;gap:16px !important;justify-content:center !important;margin-top:8px !important;flex-wrap:wrap !important;}',
+      '.rcz-actreq__links{display:flex !important;gap:10px !important;align-items:center !important;justify-content:center !important;margin-top:8px !important;flex-wrap:wrap !important;}',
       '.rcz-actreq a,.rcz-nameact a,.rcz-addlink{color:#2f6fed !important;text-decoration:underline !important;text-underline-offset:2px !important;pointer-events:auto !important;cursor:pointer !important;font:700 12px/1 Roboto,Arial,sans-serif !important;}',
       '.rcz-actreq__links a{font-family:Roboto,Arial,sans-serif !important;font-weight:800 !important;font-size:min(23px,6.5cqw) !important;line-height:1.1 !important;white-space:nowrap !important;}',
+      '.rcz-actreq__lead,.rcz-actreq__or{color:#a12a20 !important;font-family:Roboto,Arial,sans-serif !important;font-weight:700 !important;font-size:min(16px,4.6cqw) !important;line-height:1.1 !important;white-space:nowrap !important;}',
+      '.rcz-actreq--mm .rcz-actreq__hd,.rcz-nameact .rcz-actreq__hd{font-size:min(16px,4.7cqw) !important;line-height:1.18 !important;}',
       '.rcz-addlink{font-size:16px !important;margin-left:8px !important;}'
     ].join('\n');
     document.head.appendChild(s);
@@ -1038,13 +1046,10 @@
   function showMismatch(w, btn, icon, img, cardId, memberName, ticketName, tier) {
     if (img) { /* keep photo */ } else { var im = btn.querySelector('img.rcz-photo'); if (im) img = im; }
     if (icon && (img || btn.querySelector('img.rcz-photo'))) icon.style.display = 'none';
-    var mem = '<b>' + esc((memberName || 'another member').toUpperCase()) + '</b>';
-    var tk = esc(ticketName || 'this guest');
-    var note = esc(CFG.MISMATCH_NOTE_TMPL).split('{MEMBER}').join(mem).split('{TICKET}').join(tk);
-    var onPhoto = !!(w.querySelector('img.rcz-photo') || btn.querySelector('img.rcz-photo'));
-    addMismatch(w, note, onPhoto);
+    // The big red NAME MIS-MATCH overlay is retired — the frosted FRAUD WARNING box below carries the message.
+    clrMismatch(w);
     // ACTION box (same frosted style as the missing-data prompt) with the two ways to clear a mismatch
-    addActionReq(w, cardId, [{ label: 'ADD TICKET', kind: 'addticket' }, { label: 'PASS NICKNAME', kind: 'nickname' }], CFG.MISMATCH_ACTREQ_HD, '');
+    addActionReq(w, cardId, [{ label: 'ADD TICKET', kind: 'addticket' }, { label: 'PASS NICKNAME', kind: 'nickname' }], CFG.MISMATCH_ACTREQ_HD, '', 'CHOOSE ONE:');
     clrAlert(w); clrCasual(w); clrVisiting(w); clrNote(w);
     if (tier) addBadge(w, tier, null); else clrBadge(w);
   }
@@ -1073,7 +1078,7 @@
   function memberNote(w, info, cardId) {
     var hasPhoto = !!w.querySelector('img.rcz-photo');
     if (info.family) { addActionReq(w, cardId, memberActions(w, info, cardId, hasPhoto)); clrNote(w); }
-    else if (info.closematch) { addActionReq(w, cardId, [{ label: 'ADD TICKET', kind: 'addticket' }, { label: 'PASS NICKNAME', kind: 'nickname' }], CFG.MISMATCH_ACTREQ_HD, ''); clrNote(w); }
+    else if (info.closematch) { addActionReq(w, cardId, [{ label: 'ADD TICKET', kind: 'addticket' }, { label: 'PASS NICKNAME', kind: 'nickname' }], CFG.MISMATCH_ACTREQ_HD, '', 'CHOOSE ONE:'); clrNote(w); }
     else if (info.paidMember) { addNote(w, 'paidmember', firstNameOnCard(w), ticketTypeOfPart(info.recipPart)); clrActionReq(w); }
     else { clrNote(w); clrActionReq(w); }
   }
@@ -1163,26 +1168,53 @@
   }
   // ACTION REQUIRED prompt — a frosted banner of tappable links. Each link unlocks this card's shield;
   // a link with href also forwards to that member's tab (add photo / add name) via ROLLER's blue pill.
-  function addActionReq(w, cardId, actions, heading, sub) {
+  function addActionReq(w, cardId, actions, heading, sub, lead) {
     var el = w.querySelector('.rcz-actreq');
     if (!el) { el = document.createElement('div'); el.className = 'rcz-actreq'; w.appendChild(el); }
+    var cls = 'rcz-actreq' + (lead ? ' rcz-actreq--mm' : '');   // --mm: the wrappable name-mismatch heading
+    if (el.className !== cls) el.className = cls;
     var hd = heading == null ? CFG.WARN_HEADING : heading;
     var sb = sub == null ? CFG.WARN_SUB : sub;   // pass '' to drop the sub-line (e.g. the mismatch action box)
-    var links = actions.map(function (a) {
+    var linkEls = actions.map(function (a) {
       return '<a href="#" data-rcz-unlock="' + esc(cardId) + '"' + (a.kind ? ' data-rcz-act="' + esc(a.kind) + '"' : '') + (a.href ? ' data-rcz-href="' + esc(a.href) + '"' : '') + (a.ticket ? ' data-rcz-ticket="1"' : '') + '>' + esc(a.label) + '</a>';
-    }).join('');
+    });
+    // "lead" turns the row into a sentence: CHOOSE ONE: <link> or <link> (the name-mismatch box)
+    var links = lead ? '<span class="rcz-actreq__lead">' + esc(lead) + '</span>' + linkEls.join('<span class="rcz-actreq__or">or</span>') : linkEls.join('');
     var html = '<div class="rcz-actreq__hd">' + esc(hd) + '</div>' +
                (sb ? '<div class="rcz-actreq__sub">' + esc(sb) + '</div>' : '') +
                '<div class="rcz-actreq__links">' + links + '</div>';
     if (el.getAttribute('data-h') !== html) { el.innerHTML = html; el.setAttribute('data-h', html); }
   }
   function clrActionReq(w) { var el = w.querySelector('.rcz-actreq'); if (el) el.remove(); }
+  // Name-comparison block for a name-mismatch tile — Booking: <ticket name> over Membership: <member name>,
+  // so staff can see whether it's a nickname, a spelling slip, or a genuinely different person. Replaces the
+  // ticket type + name at bottom-right (so the age type is intentionally dropped on these tiles).
+  function mismatchNamesFor(w, info, cardId) {
+    if (!info || info.pending) return null;
+    if (info.mismatch || info.closematch) return { t: info.ticketName, m: info.memberName };
+    if (info.member && !info.family && !info.misaligned && !info.paidMember && !info.visiting) {
+      var pm = pillMismatchCheck(w, cardId);
+      if (pm) return { t: pm.ticketName, m: pm.memberName };
+    }
+    return null;
+  }
+  function addMismatchNames(w, ticketName, memberName) {
+    w.classList.add('rcz-mmnames-on');
+    var el = w.querySelector('.rcz-mmnames');
+    if (!el) { el = document.createElement('div'); el.className = 'rcz-mmnames'; w.appendChild(el); }
+    var html = '<div class="rcz-mmnames__row"><span class="rcz-mmnames__lbl">Booking:</span><span class="rcz-mmnames__val">' + esc(ticketName || '?') + '</span></div>' +
+               '<div class="rcz-mmnames__row"><span class="rcz-mmnames__lbl">Membership:</span><span class="rcz-mmnames__val">' + esc(memberName || '?') + '</span></div>';
+    if (el.getAttribute('data-h') !== html) { el.innerHTML = html; el.setAttribute('data-h', html); }
+  }
+  function clrMismatchNames(w) { w.classList.remove('rcz-mmnames-on'); var el = w.querySelector('.rcz-mmnames'); if (el) el.remove(); }
   // Fix #1: the NAME-action box (ACTION REQUIRED · ADD TICKET / PASS NICKNAME), a second frosted card stacked
   // above the ADD PHOTO box so a no-photo close/mismatch tile still surfaces the name issue. Links unlock the shield.
   function addNameAct(w, cardId) {
     var el = w.querySelector('.rcz-nameact');
     if (!el) { el = document.createElement('div'); el.className = 'rcz-nameact'; w.appendChild(el); }
-    var links = '<a href="#" data-rcz-unlock="' + esc(cardId) + '" data-rcz-act="addticket">ADD TICKET</a>' +
+    var links = '<span class="rcz-actreq__lead">CHOOSE ONE:</span>' +
+                '<a href="#" data-rcz-unlock="' + esc(cardId) + '" data-rcz-act="addticket">ADD TICKET</a>' +
+                '<span class="rcz-actreq__or">or</span>' +
                 '<a href="#" data-rcz-unlock="' + esc(cardId) + '" data-rcz-act="nickname">PASS NICKNAME</a>';
     var html = '<div class="rcz-actreq__hd">' + esc(CFG.MISMATCH_ACTREQ_HD) + '</div>' +
                '<div class="rcz-actreq__links">' + links + '</div>';
@@ -1325,8 +1357,8 @@
       if (!activeRoute()) {
         // not the booking check-in list -> strip our styling/overlays so ROLLER's native pages work
         var st = document.getElementById('rcz-style'); if (st) st.remove();
-        document.querySelectorAll('.rcz-alert, .rcz-casual, .rcz-mismatch, .rcz-visiting, .rcz-badge, .rcz-note, .rcz-bday, .rcz-meaning, .rcz-status, .rcz-actreq, .rcz-nameact, .rcz-botbar, .rcz-mem-info, .rcz-mem-name, .rcz-memstrip, img.rcz-photo').forEach(function (e) { e.remove(); });
-        document.querySelectorAll('.rcz-alert-on, .rcz-casual-on, .rcz-mismatch-on, .rcz-visiting-on, .rcz-locked').forEach(function (w) { w.classList.remove('rcz-alert-on', 'rcz-casual-on', 'rcz-mismatch-on', 'rcz-visiting-on', 'rcz-locked'); });
+        document.querySelectorAll('.rcz-alert, .rcz-casual, .rcz-mismatch, .rcz-visiting, .rcz-badge, .rcz-note, .rcz-bday, .rcz-meaning, .rcz-status, .rcz-actreq, .rcz-nameact, .rcz-botbar, .rcz-mem-info, .rcz-mem-name, .rcz-mmnames, .rcz-memstrip, img.rcz-photo').forEach(function (e) { e.remove(); });
+        document.querySelectorAll('.rcz-alert-on, .rcz-casual-on, .rcz-mismatch-on, .rcz-visiting-on, .rcz-mmnames-on, .rcz-locked').forEach(function (w) { w.classList.remove('rcz-alert-on', 'rcz-casual-on', 'rcz-mismatch-on', 'rcz-visiting-on', 'rcz-mmnames-on', 'rcz-locked'); });
         document.querySelectorAll('app-bip-summary.rcz-mem, app-bip-summary.rcz-skip').forEach(function (h) { h.classList.remove('rcz-mem', 'rcz-skip'); });
         document.querySelectorAll('app-bip-summary:not(.rcz-skip) button[id^="booking-details-button-"] mat-icon').forEach(function (ic) { ic.style.display = ''; });
         // #4: we've left the booking screen (e.g. onto the photo tab) -> promote an armed handoff to "ready"
@@ -1390,7 +1422,7 @@
           var mem = '<b>' + esc((info.memberName || 'another member').toUpperCase()) + '</b>';
           var tk = esc(info.ticketName || 'this guest');
           var note = esc(CFG.MISMATCH_NOTE_TMPL).split('{MEMBER}').join(mem).split('{TICKET}').join(tk);
-          clrMismatch(w); addActionReq(w, cardId, [{ label: 'ADD TICKET', kind: 'addticket' }, { label: 'PASS NICKNAME', kind: 'nickname' }], CFG.MISMATCH_ACTREQ_HD, ''); clrAlert(w); clrCasual(w); clrVisiting(w); clrNote(w); if (info.tier) addBadge(w, info.tier, memHref(info, cardId), info.visiting); else clrBadge(w);
+          clrMismatch(w); addActionReq(w, cardId, [{ label: 'ADD TICKET', kind: 'addticket' }, { label: 'PASS NICKNAME', kind: 'nickname' }], CFG.MISMATCH_ACTREQ_HD, '', 'CHOOSE ONE:'); clrAlert(w); clrCasual(w); clrVisiting(w); clrNote(w); if (info.tier) addBadge(w, info.tier, memHref(info, cardId), info.visiting); else clrBadge(w);
         } else if (info && !info.pending && info.visiting) {
           // visiting overlay dropped from the redesign — a visiting member with no photo is treated
           // like any other no-photo member (standard "requires photo" alert), no "visiting" banner.
@@ -1468,6 +1500,9 @@
         if (snoozedName(cardId)) { clrNameAct(w); clrMismatch(w); if (!photoGate(w, info)) clrActionReq(w); }
         if (snoozedPhoto(cardId)) clrActionReq(w);
         w.classList.toggle('rcz-locked', !state.unlocked[cardId] && ((nameGate(info) && !snoozedName(cardId)) || (photoGate(w, info) && !snoozedPhoto(cardId))));
+        // name-mismatch tiles: replace the type+name at bottom-right with the Booking/Membership comparison
+        var _mmn = mismatchNamesFor(w, info, cardId);
+        if (_mmn) addMismatchNames(w, _mmn.t, _mmn.m); else clrMismatchNames(w);
         var bm = state.birthdays[cardId];
         if (CFG.SHOW_BIRTHDAY && bm && birthdayInWindow(bm)) {
           addBirthday(w, bm);
