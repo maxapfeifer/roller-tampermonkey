@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Venue — ROLLER Check-in Cards + Member Photos
 // @namespace    venue.roller.checkin-cards
-// @version      5.68
+// @version      5.69
 // @description  Reformats the ROLLER POS booking check-in list into full-frame photo cards, surfaces member photos on load (no Verify click), alerts when a member has no photo, handles family memberships (best-effort photos + add-name prompt) and close/similar name matches.
 // @match        https://pos.roller.app/*
 // @match        https://*.roller.app/*
@@ -45,6 +45,7 @@
     DONE_STEP_BACK:   true,   // after "Done" on a child member page, step back past the parent page it pushes
     WARN_HEADING:     'WARNING: MISSING DATA!',                  // ACTION REQUIRED banner big heading
     WARN_SUB:         'COMPLETE PROFILE TO AVOID CANCELLATION',  // ACTION REQUIRED banner sub-line
+    MISMATCH_ACTREQ_HD: 'ACTION REQUIRED',                       // heading on the name-mismatch action box (no sub-line)
     // Age-type icons for casual/foster tiles (infant/child/adult), by ticket type. Populated with data:URIs
     // just below the CFG block (kept out of the literal so the base64 blobs don't clutter the config).
     AGE_ICONS:        {},
@@ -724,6 +725,10 @@
       'app-bip-summary:not(.rcz-skip) .summary__wrapper.rcz-casual-on button[id^="booking-details-button"] mat-icon{display:none !important;}',
       /* age-type icon (#2): centred in the photo square, kept clear of the bottom bar */
       'app-bip-summary:not(.rcz-skip) .summary__wrapper button[id^="booking-details-button"] img.rcz-ageicon{position:absolute !important;top:44% !important;left:50% !important;transform:translate(-50%,-50%) !important;width:auto !important;height:62% !important;max-width:74% !important;object-fit:contain !important;pointer-events:none !important;z-index:2 !important;}',
+      /* age-TEXT (#2, replaces the silhouette): ticket type over the name, centred, medium size */
+      'app-bip-summary:not(.rcz-skip) .summary__wrapper button[id^="booking-details-button"] .rcz-agetext{position:absolute !important;top:42% !important;left:50% !important;transform:translate(-50%,-50%) !important;width:86% !important;z-index:2 !important;pointer-events:none !important;text-align:center !important;}',
+      '.rcz-agetext__ty{font:600 18px/1.15 Roboto,Arial,sans-serif !important;color:#5b636d !important;letter-spacing:.02em !important;}',
+      '.rcz-agetext__nm{font:700 22px/1.15 Roboto,Arial,sans-serif !important;color:#1f2933 !important;margin-top:3px !important;overflow-wrap:anywhere !important;}',
       /* MISMATCH (member, ticket name != membership name) — red, card-filling; icon hidden */
       '.rcz-mismatch{position:absolute !important;inset:0 !important;display:flex !important;flex-direction:column !important;align-items:center !important;justify-content:center !important;text-align:center !important;color:#e5231b !important;z-index:5 !important;pointer-events:none !important;padding:16px 20px 78px !important;gap:14px !important;}',
       '.rcz-mismatch__hd{font:900 48px/1 Roboto,Arial,sans-serif !important;letter-spacing:.02em !important;}',
@@ -801,12 +806,15 @@
       /* LOCKED shield — dim + block the check-in button until staff action a prompt */
       'app-bip-summary:not(.rcz-skip) .summary__wrapper.rcz-locked button[id^="check-in-button"]{pointer-events:none !important;opacity:.34 !important;filter:grayscale(.7) !important;}',
       /* ACTION REQUIRED prompt — frosted banner with tappable links */
-      '.rcz-actreq{position:absolute !important;left:50% !important;right:auto !important;transform:translateX(-50%) !important;max-width:calc(100% - 24px) !important;bottom:76px !important;z-index:6 !important;pointer-events:none !important;background:rgba(255,255,255,.86) !important;-webkit-backdrop-filter:blur(4px) !important;backdrop-filter:blur(4px) !important;border-radius:13px !important;padding:12px 18px 13px !important;box-shadow:0 3px 12px rgba(0,0,0,.18) !important;text-align:center !important;}',
-      '.rcz-actreq__hd{font:800 23px/1.1 Roboto,Arial,sans-serif !important;letter-spacing:.01em !important;color:#e5231b !important;}',
-      '.rcz-actreq__sub{font:700 15px/1.22 Roboto,Arial,sans-serif !important;letter-spacing:.02em !important;color:#a12a20 !important;margin-top:5px !important;}',
+      /* Box spans (near) the full tile width and is a query container, so the three lines can size
+         themselves to the tile (min(cap, N cqw)) and always land on ONE line — no wrap, less grey hidden.
+         On a wide tile they cap at the approved 23/15px; on a narrow tile they shrink just enough to fit. */
+      '.rcz-actreq{position:absolute !important;left:8px !important;right:8px !important;transform:none !important;max-width:none !important;bottom:76px !important;z-index:6 !important;pointer-events:none !important;container-type:inline-size !important;background:rgba(255,255,255,.86) !important;-webkit-backdrop-filter:blur(4px) !important;backdrop-filter:blur(4px) !important;border-radius:13px !important;padding:12px 12px 13px !important;box-shadow:0 3px 12px rgba(0,0,0,.18) !important;text-align:center !important;}',
+      '.rcz-actreq__hd{font-family:Roboto,Arial,sans-serif !important;font-weight:800 !important;font-size:min(23px,6.5cqw) !important;line-height:1.12 !important;white-space:nowrap !important;letter-spacing:.01em !important;color:#e5231b !important;}',
+      '.rcz-actreq__sub{font-family:Roboto,Arial,sans-serif !important;font-weight:700 !important;font-size:min(15px,4.1cqw) !important;line-height:1.25 !important;white-space:nowrap !important;letter-spacing:.02em !important;color:#a12a20 !important;margin-top:5px !important;}',
       '.rcz-actreq__links{display:flex !important;gap:16px !important;justify-content:center !important;margin-top:8px !important;flex-wrap:wrap !important;}',
       '.rcz-actreq a,.rcz-addlink{color:#2f6fed !important;text-decoration:underline !important;text-underline-offset:2px !important;pointer-events:auto !important;cursor:pointer !important;font:700 12px/1 Roboto,Arial,sans-serif !important;}',
-      '.rcz-actreq__links a{font:800 23px/1.1 Roboto,Arial,sans-serif !important;}',
+      '.rcz-actreq__links a{font-family:Roboto,Arial,sans-serif !important;font-weight:800 !important;font-size:min(23px,6.5cqw) !important;line-height:1.1 !important;white-space:nowrap !important;}',
       '.rcz-addlink{font-size:16px !important;margin-left:8px !important;}'
     ].join('\n');
     document.head.appendChild(s);
@@ -861,6 +869,22 @@
     if (im.getAttribute('src') !== uri) im.setAttribute('src', uri);
   }
   function clrAgeIcon(btn) { if (!btn) return; var im = btn.querySelector('img.rcz-ageicon'); if (im) im.remove(); }
+  // Text placeholder for casual/foster tiles: the ticket TYPE over the NAME, medium size, centred in the
+  // square — replaces the silhouette. Bottom bar still carries type+name; this just fills the empty photo area.
+  function setAgeText(btn, typeRaw, name) {
+    if (!btn) return;
+    var key = ageIconKey(typeRaw);
+    var ty = key.charAt(0).toUpperCase() + key.slice(1);   // Infant / Child / Adult
+    var nm = proper(firstName(name || ''));
+    var oi = btn.querySelector('img.rcz-ageicon'); if (oi) oi.remove();   // drop any prior silhouette
+    var mi = btn.querySelector('mat-icon'); if (mi) mi.style.display = 'none';
+    var el = btn.querySelector('.rcz-agetext');
+    if (!el) { el = document.createElement('div'); el.className = 'rcz-agetext'; btn.appendChild(el); }
+    var html = '<div class="rcz-agetext__ty">' + esc(ty) + '</div>' +
+               (nm ? '<div class="rcz-agetext__nm">' + esc(nm) + '</div>' : '');
+    if (el.getAttribute('data-h') !== html) { el.innerHTML = html; el.setAttribute('data-h', html); }
+  }
+  function clrAgeText(btn) { if (!btn) return; var el = btn.querySelector('.rcz-agetext'); if (el) el.remove(); var im = btn.querySelector('img.rcz-ageicon'); if (im) im.remove(); }
   function addMismatch(w, noteHtml, onPhoto) {
     w.classList.add('rcz-mismatch-on');
     var m = w.querySelector('.rcz-mismatch');
@@ -1015,7 +1039,10 @@
     var tk = esc(ticketName || 'this guest');
     var note = esc(CFG.MISMATCH_NOTE_TMPL).split('{MEMBER}').join(mem).split('{TICKET}').join(tk);
     var onPhoto = !!(w.querySelector('img.rcz-photo') || btn.querySelector('img.rcz-photo'));
-    addMismatch(w, note, onPhoto); clrAlert(w); clrCasual(w); clrVisiting(w); clrNote(w);
+    addMismatch(w, note, onPhoto);
+    // ACTION box (same frosted style as the missing-data prompt) with the two ways to clear a mismatch
+    addActionReq(w, cardId, [{ label: 'ADD TICKET' }, { label: 'PASS NICKNAME' }], CFG.MISMATCH_ACTREQ_HD, '');
+    clrAlert(w); clrCasual(w); clrVisiting(w); clrNote(w);
     if (tier) addBadge(w, tier, null); else clrBadge(w);
   }
   // ROLLER draws the member's own photo in the avatar button as <img> with a "/ticket/..." CDN src when
@@ -1133,14 +1160,16 @@
   }
   // ACTION REQUIRED prompt — a frosted banner of tappable links. Each link unlocks this card's shield;
   // a link with href also forwards to that member's tab (add photo / add name) via ROLLER's blue pill.
-  function addActionReq(w, cardId, actions) {
+  function addActionReq(w, cardId, actions, heading, sub) {
     var el = w.querySelector('.rcz-actreq');
     if (!el) { el = document.createElement('div'); el.className = 'rcz-actreq'; w.appendChild(el); }
+    var hd = heading == null ? CFG.WARN_HEADING : heading;
+    var sb = sub == null ? CFG.WARN_SUB : sub;   // pass '' to drop the sub-line (e.g. the mismatch action box)
     var links = actions.map(function (a) {
       return '<a href="#" data-rcz-unlock="' + esc(cardId) + '"' + (a.kind ? ' data-rcz-act="' + esc(a.kind) + '"' : '') + (a.href ? ' data-rcz-href="' + esc(a.href) + '"' : '') + '>' + esc(a.label) + '</a>';
     }).join('');
-    var html = '<div class="rcz-actreq__hd">' + esc(CFG.WARN_HEADING) + '</div>' +
-               '<div class="rcz-actreq__sub">' + esc(CFG.WARN_SUB) + '</div>' +
+    var html = '<div class="rcz-actreq__hd">' + esc(hd) + '</div>' +
+               (sb ? '<div class="rcz-actreq__sub">' + esc(sb) + '</div>' : '') +
                '<div class="rcz-actreq__links">' + links + '</div>';
     if (el.getAttribute('data-h') !== html) { el.innerHTML = html; el.setAttribute('data-h', html); }
   }
@@ -1288,7 +1317,7 @@
           var mem = '<b>' + esc((info.memberName || 'another member').toUpperCase()) + '</b>';
           var tk = esc(info.ticketName || 'this guest');
           var note = esc(CFG.MISMATCH_NOTE_TMPL).split('{MEMBER}').join(mem).split('{TICKET}').join(tk);
-          clrMismatch(w); addActionReq(w, cardId, [{ label: 'Add a ticket' }, { label: 'Pass nickname' }]); clrAlert(w); clrCasual(w); clrVisiting(w); clrNote(w); if (info.tier) addBadge(w, info.tier, memHref(info, cardId), info.visiting); else clrBadge(w);
+          clrMismatch(w); addActionReq(w, cardId, [{ label: 'ADD TICKET' }, { label: 'PASS NICKNAME' }], CFG.MISMATCH_ACTREQ_HD, ''); clrAlert(w); clrCasual(w); clrVisiting(w); clrNote(w); if (info.tier) addBadge(w, info.tier, memHref(info, cardId), info.visiting); else clrBadge(w);
         } else if (info && !info.pending && info.visiting) {
           // visiting overlay dropped from the redesign — a visiting member with no photo is treated
           // like any other no-photo member (standard "requires photo" alert), no "visiting" banner.
@@ -1332,8 +1361,8 @@
         }
         // age-type icon on casual / foster tiles (#2), chosen by ticket type; cleared on member/other tiles
         if (info && !info.pending && info.member === false) {
-          setAgeIcon(btn, ((w.querySelector('.summary-detail__item--emphasis') || {}).textContent || ''));
-        } else { clrAgeIcon(btn); }
+          setAgeText(btn, ((w.querySelector('.summary-detail__item--emphasis') || {}).textContent || ''), holderNameFor(w, cardId));
+        } else { clrAgeText(btn); }
         // #8/#9: when a member ticket recorded no name, surface the membership member's name at the bottom.
         // Only fill an empty holder label (or one we previously filled) — never overwrite a real name ROLLER
         // supplied; and clear our injected name if the card no longer carries one.
