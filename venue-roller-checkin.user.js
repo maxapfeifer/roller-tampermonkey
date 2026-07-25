@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Venue — ROLLER Check-in Cards + Member Photos
 // @namespace    venue.roller.checkin-cards
-// @version      5.67
+// @version      5.68
 // @description  Reformats the ROLLER POS booking check-in list into full-frame photo cards, surfaces member photos on load (no Verify click), alerts when a member has no photo, handles family memberships (best-effort photos + add-name prompt) and close/similar name matches.
 // @match        https://pos.roller.app/*
 // @match        https://*.roller.app/*
@@ -746,6 +746,7 @@
       '.rcz-badge__tier{font:700 18px/1.32 Roboto,Arial,sans-serif !important;color:#2f6fed !important;}',
       '.rcz-badge__lbl{font:700 18px/1.32 Roboto,Arial,sans-serif !important;color:#2f6fed !important;}',
       '.rcz-badge--gold .rcz-badge__tier,.rcz-badge--gold .rcz-badge__lbl,.rcz-badge--wonder .rcz-badge__tier,.rcz-badge--wonder .rcz-badge__lbl{color:#2f6fed !important;}',
+      '.rcz-badge__visit{color:#b4308f !important;}',
       /* link variant: base badge is pointer-events:none, so re-enable clicks + show it is tappable */
       '.rcz-badge--link{pointer-events:auto !important;cursor:pointer !important;text-decoration:none !important;transition:filter .1s,box-shadow .1s !important;}',
       '.rcz-badge--link:hover{filter:brightness(1.07) !important;box-shadow:0 3px 13px rgba(0,0,0,.45) !important;text-decoration:none !important;}',
@@ -800,11 +801,12 @@
       /* LOCKED shield — dim + block the check-in button until staff action a prompt */
       'app-bip-summary:not(.rcz-skip) .summary__wrapper.rcz-locked button[id^="check-in-button"]{pointer-events:none !important;opacity:.34 !important;filter:grayscale(.7) !important;}',
       /* ACTION REQUIRED prompt — frosted banner with tappable links */
-      '.rcz-actreq{position:absolute !important;left:50% !important;right:auto !important;transform:translateX(-50%) !important;max-width:calc(100% - 24px) !important;bottom:76px !important;z-index:6 !important;pointer-events:none !important;background:rgba(255,255,255,.86) !important;-webkit-backdrop-filter:blur(4px) !important;backdrop-filter:blur(4px) !important;border-radius:11px !important;padding:9px 16px 10px !important;box-shadow:0 2px 9px rgba(0,0,0,.17) !important;text-align:center !important;}',
-      '.rcz-actreq__hd{font:800 15.5px/1.12 Roboto,Arial,sans-serif !important;letter-spacing:.01em !important;color:#e5231b !important;}',
-      '.rcz-actreq__sub{font:700 10.5px/1.25 Roboto,Arial,sans-serif !important;letter-spacing:.02em !important;color:#a12a20 !important;margin-top:3px !important;}',
-      '.rcz-actreq__links{display:flex !important;gap:16px !important;justify-content:center !important;margin-top:5px !important;flex-wrap:wrap !important;}',
+      '.rcz-actreq{position:absolute !important;left:50% !important;right:auto !important;transform:translateX(-50%) !important;max-width:calc(100% - 24px) !important;bottom:76px !important;z-index:6 !important;pointer-events:none !important;background:rgba(255,255,255,.86) !important;-webkit-backdrop-filter:blur(4px) !important;backdrop-filter:blur(4px) !important;border-radius:13px !important;padding:12px 18px 13px !important;box-shadow:0 3px 12px rgba(0,0,0,.18) !important;text-align:center !important;}',
+      '.rcz-actreq__hd{font:800 23px/1.1 Roboto,Arial,sans-serif !important;letter-spacing:.01em !important;color:#e5231b !important;}',
+      '.rcz-actreq__sub{font:700 15px/1.22 Roboto,Arial,sans-serif !important;letter-spacing:.02em !important;color:#a12a20 !important;margin-top:5px !important;}',
+      '.rcz-actreq__links{display:flex !important;gap:16px !important;justify-content:center !important;margin-top:8px !important;flex-wrap:wrap !important;}',
       '.rcz-actreq a,.rcz-addlink{color:#2f6fed !important;text-decoration:underline !important;text-underline-offset:2px !important;pointer-events:auto !important;cursor:pointer !important;font:700 12px/1 Roboto,Arial,sans-serif !important;}',
+      '.rcz-actreq__links a{font:800 23px/1.1 Roboto,Arial,sans-serif !important;}',
       '.rcz-addlink{font-size:16px !important;margin-left:8px !important;}'
     ].join('\n');
     document.head.appendChild(s);
@@ -1045,7 +1047,7 @@
     else if (info.paidMember) { addNote(w, 'paidmember', firstNameOnCard(w), ticketTypeOfPart(info.recipPart)); clrActionReq(w); }
     else { clrNote(w); clrActionReq(w); }
   }
-  function addBadge(w, tier, href) {
+  function addBadge(w, tier, href, visiting) {
     var gold = tier === 'gold';
     var b = w.querySelector('.rcz-badge');
     // badge is an <a> so it can carry an href; recreate if an older <div> badge is still on the card
@@ -1061,7 +1063,10 @@
       if (CFG.MEM_LINK_NEWTAB) { b.setAttribute('target', '_blank'); b.setAttribute('rel', 'noopener'); }
       else { b.removeAttribute('target'); b.removeAttribute('rel'); }
     } else if (b.hasAttribute('href')) { b.removeAttribute('href'); b.removeAttribute('target'); b.removeAttribute('rel'); }
-    var html = '<span class="rcz-badge__tier">' + esc(gold ? CFG.TIER_GOLD : CFG.TIER_WONDER) + '</span><span class="rcz-badge__lbl">Member</span>';
+    // members visiting from another museum (pill shows an ID, not a name) get a magenta "Visiting" flag
+    // beside "Member" — nested inside __lbl so it sits on the same line as the label.
+    var lbl = 'Member' + (visiting ? ' <span class="rcz-badge__visit">Visiting</span>' : '');
+    var html = '<span class="rcz-badge__tier">' + esc(gold ? CFG.TIER_GOLD : CFG.TIER_WONDER) + '</span><span class="rcz-badge__lbl">' + lbl + '</span>';
     if (b.getAttribute('data-h') !== html) { b.innerHTML = html; b.setAttribute('data-h', html); }
   }
   function clrBadge(w) { var b = w.querySelector('.rcz-badge'); if (b) b.remove(); }
@@ -1098,6 +1103,14 @@
     if (el.getAttribute('data-h') !== html) { el.innerHTML = html; el.setAttribute('data-h', html); }
   }
   function clrStatus(w) { var el = w.querySelector('.rcz-status'); if (el) el.remove(); }
+  // BLANK status band — casual guests carry no Name:/Photo: readout, but we still draw the band (two empty
+  // rows keep it the same height as a member's) so every tile shares the same top edge. Pure consistency.
+  function paintStatusEmpty(w) {
+    var el = w.querySelector('.rcz-status');
+    if (!el) { el = document.createElement('div'); el.className = 'rcz-status'; w.appendChild(el); }
+    var html = '<div class="rcz-status__row">&nbsp;</div><div class="rcz-status__row">&nbsp;</div>';
+    if (el.getAttribute('data-h') !== html) { el.innerHTML = html; el.setAttribute('data-h', html); }
+  }
   // derive the Name:/Photo: status for a card from its detected scenario. Returns null while loading.
   function statusInfo(w, info) {
     if (!info || info.pending) return null;
@@ -1247,7 +1260,7 @@
           if (pm) {
             showMismatch(w, btn, icon, img, cardId, pm.memberName, pm.ticketName, info.tier);
           } else {
-            addBadge(w, info.tier, memHref(info, cardId));
+            addBadge(w, info.tier, memHref(info, cardId), info.visiting);
             clrAlert(w); clrCasual(w); clrMismatch(w); clrVisiting(w);
             // photo cards can carry a prompt: family -> "add name"; close name -> "confirm"; paid member ->
             // "discount mis-assigned, total still correct"
@@ -1275,12 +1288,12 @@
           var mem = '<b>' + esc((info.memberName || 'another member').toUpperCase()) + '</b>';
           var tk = esc(info.ticketName || 'this guest');
           var note = esc(CFG.MISMATCH_NOTE_TMPL).split('{MEMBER}').join(mem).split('{TICKET}').join(tk);
-          clrMismatch(w); addActionReq(w, cardId, [{ label: 'Add a ticket' }, { label: 'Pass nickname' }]); clrAlert(w); clrCasual(w); clrVisiting(w); clrNote(w); if (info.tier) addBadge(w, info.tier, memHref(info, cardId)); else clrBadge(w);
+          clrMismatch(w); addActionReq(w, cardId, [{ label: 'Add a ticket' }, { label: 'Pass nickname' }]); clrAlert(w); clrCasual(w); clrVisiting(w); clrNote(w); if (info.tier) addBadge(w, info.tier, memHref(info, cardId), info.visiting); else clrBadge(w);
         } else if (info && !info.pending && info.visiting) {
           // visiting overlay dropped from the redesign — a visiting member with no photo is treated
           // like any other no-photo member (standard "requires photo" alert), no "visiting" banner.
           if (img) img.remove();
-          clrAlert(w); clrCasual(w); clrMismatch(w); clrVisiting(w); clrNote(w); addActionReq(w, cardId, memberActions(w, info, cardId, false)); if (info.tier) addBadge(w, info.tier, memHref(info, cardId)); else clrBadge(w);
+          clrAlert(w); clrCasual(w); clrMismatch(w); clrVisiting(w); clrNote(w); addActionReq(w, cardId, memberActions(w, info, cardId, false)); if (info.tier) addBadge(w, info.tier, memHref(info, cardId), info.visiting); else clrBadge(w);
         } else if (info && !info.pending && info.member) {
           var np = nativePhotoImg(btn);
           if (np) {
@@ -1295,14 +1308,14 @@
             if (pmn) {
               showMismatch(w, btn, icon, img, cardId, pmn.memberName, pmn.ticketName, info.tier);
             } else {
-              addBadge(w, info.tier, memHref(info, cardId));
+              addBadge(w, info.tier, memHref(info, cardId), info.visiting);
               clrAlert(w); clrCasual(w); clrMismatch(w); clrVisiting(w);
               memberNote(w, info, cardId);
             }
           } else {
             // matched member, genuinely no photo on file -> "requires photo" alert
             if (img) img.remove();
-            clrAlert(w); clrCasual(w); clrMismatch(w); clrVisiting(w); clrNote(w); addActionReq(w, cardId, memberActions(w, info, cardId, false)); if (info.tier) addBadge(w, info.tier, memHref(info, cardId)); else clrBadge(w);
+            clrAlert(w); clrCasual(w); clrMismatch(w); clrVisiting(w); clrNote(w); addActionReq(w, cardId, memberActions(w, info, cardId, false)); if (info.tier) addBadge(w, info.tier, memHref(info, cardId), info.visiting); else clrBadge(w);
           }
         } else if (info && !info.pending && info.member === false) {
           // casual (non-member) OR foster-care partner -> plain tile with a bottom-left tag. Foster guests
@@ -1338,7 +1351,9 @@
         if (_ar) _ar.style.bottom = _mm ? '176px' : '';
         // --- status band + prototype extras, independent of the card state above ---
         var si = statusInfo(w, info);
-        if (si) paintStatus(w, si.nm, si.nmW, si.ph, si.phW); else clrStatus(w);
+        if (si) paintStatus(w, si.nm, si.nmW, si.ph, si.phW);
+        else if (info && !info.pending && info.member === false && !info.misaligned) paintStatusEmpty(w); // casual/foster: blank band for tile consistency
+        else clrStatus(w);
         if (!state.unlocked) state.unlocked = {};
         w.classList.toggle('rcz-locked', needsAction(w, info) && !state.unlocked[cardId]);
         var bm = state.birthdays[cardId];
@@ -1446,14 +1461,12 @@
         if (badge) {
           if (badge.getAttribute('target') === '_blank') return;
           var href = badge.getAttribute('href');
-          // if this card is currently in the "photo required" state, land on the Guest (photo) tab too —
-          // but NOT for members who already have a photo (no alert), where the Membership tab is expected.
-          var bhost = badge.closest ? badge.closest('app-bip-summary') : null;
-          var bAlert = bhost ? bhost.querySelector('.rcz-alert[data-rcz-href]') : null;
+          // The tier badge always lands staff on the member's Guest tab (never ROLLER's default ticket tab),
+          // whether we hand off to the blue pill or fall back to opening the card's own tile.
           if (href && forwardToPill(href)) { ev.preventDefault(); openGuestTabSoon(); return; }
           var host = badge.closest ? badge.closest('app-bip-summary') : null;
           var tile = host ? host.querySelector('button[id^="booking-details-button-"]') : null;
-          if (tile) { ev.preventDefault(); tile.click(); }
+          if (tile) { ev.preventDefault(); tile.click(); openGuestTabSoon(); } // fallback nav -> Guest tab too
           return;
         }
         // B) clicking the photo/tile of ANY member card goes to THAT member's own profile (their specific
