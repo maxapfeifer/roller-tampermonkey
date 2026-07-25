@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Venue — ROLLER Check-in Cards + Member Photos
 // @namespace    venue.roller.checkin-cards
-// @version      5.74
+// @version      5.75
 // @description  Reformats the ROLLER POS booking check-in list into full-frame photo cards, surfaces member photos on load (no Verify click), alerts when a member has no photo, handles family memberships (best-effort photos + add-name prompt) and close/similar name matches.
 // @match        https://pos.roller.app/*
 // @match        https://*.roller.app/*
@@ -1505,16 +1505,21 @@
   // click it once it's present + wired. Stop as soon as it's selected (so we never fight a manual switch),
   // or after a short timeout if it never appears. Tabs: Guest = bip-detail-tab-customer, Membership = ...-ticket.
   function openGuestTabSoon() {
-    var start = Date.now();
-    var iv = setInterval(function () {
+    var start = Date.now(), iv = null;
+    function stop() { if (iv) { clearInterval(iv); iv = null; } document.removeEventListener('pointerdown', onUser, true); }
+    // As soon as staff touch the screen (open the capture, hit Done, switch tab), back off completely — our
+    // auto-switch must NEVER keep re-clicking the Guest tab and cancel the interaction they just started.
+    function onUser() { stop(); }
+    document.addEventListener('pointerdown', onUser, true);
+    iv = setInterval(function () {
       try {
         var g = document.getElementById('bip-detail-tab-customer');
         if (g) {
-          if (g.getAttribute('aria-selected') === 'true') { clearInterval(iv); return; } // done
+          if (g.getAttribute('aria-selected') === 'true') { stop(); return; } // tab already open -> done
           g.click();
         }
-        if (Date.now() - start > 5000) clearInterval(iv); // give up after ~5s
-      } catch (e) { clearInterval(iv); }
+        if (Date.now() - start > 2500) stop(); // give up after ~2.5s
+      } catch (e) { stop(); }
     }, 120);
   }
   // After ROLLER's "Done" saves and pushes the parent account page (the child path minus its last /id),
