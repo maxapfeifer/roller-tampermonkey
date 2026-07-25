@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Venue — ROLLER Check-in Cards + Member Photos
 // @namespace    venue.roller.checkin-cards
-// @version      5.76
+// @version      5.77
 // @description  Reformats the ROLLER POS booking check-in list into full-frame photo cards, surfaces member photos on load (no Verify click), alerts when a member has no photo, handles family memberships (best-effort photos + add-name prompt) and close/similar name matches.
 // @match        https://pos.roller.app/*
 // @match        https://*.roller.app/*
@@ -1073,7 +1073,7 @@
   function memberNote(w, info, cardId) {
     var hasPhoto = !!w.querySelector('img.rcz-photo');
     if (info.family) { addActionReq(w, cardId, memberActions(w, info, cardId, hasPhoto)); clrNote(w); }
-    else if (info.closematch) { addActionReq(w, cardId, [{ label: 'Add a ticket' }, { label: 'Pass nickname' }]); clrNote(w); }
+    else if (info.closematch) { addActionReq(w, cardId, [{ label: 'ADD TICKET', kind: 'addticket' }, { label: 'PASS NICKNAME', kind: 'nickname' }], CFG.MISMATCH_ACTREQ_HD, ''); clrNote(w); }
     else if (info.paidMember) { addNote(w, 'paidmember', firstNameOnCard(w), ticketTypeOfPart(info.recipPart)); clrActionReq(w); }
     else { clrNote(w); clrActionReq(w); }
   }
