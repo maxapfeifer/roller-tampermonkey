@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Venue — ROLLER Check-in Cards + Member Photos
 // @namespace    venue.roller.checkin-cards
-// @version      5.72
+// @version      5.73
 // @description  Reformats the ROLLER POS booking check-in list into full-frame photo cards, surfaces member photos on load (no Verify click), alerts when a member has no photo, handles family memberships (best-effort photos + add-name prompt) and close/similar name matches.
 // @match        https://pos.roller.app/*
 // @match        https://*.roller.app/*
@@ -1191,13 +1191,14 @@
   function clrNameAct(w) { var el = w.querySelector('.rcz-nameact'); if (el) el.remove(); }
   // #2: snooze a card's prompts + shield for 2 minutes when staff acknowledge a name issue (ADD TICKET /
   // PASS NICKNAME) or clear the visiting-photo handoff. When it lapses, a re-render restores prompt + lock.
-  function snoozed(cardId) { return !!(state.snooze && state.snooze[cardId] && state.snooze[cardId] > Date.now()); }
-  function snooze(cardId) {
-    if (!cardId) return;
-    if (!state.snooze) state.snooze = {};
-    state.snooze[cardId] = Date.now() + 120000;
-    setTimeout(function () { try { render(); } catch (e) {} }, 120200);
-  }
+  function snoozedName(cardId) { return !!(state.snoozeName && state.snoozeName[cardId] > Date.now()); }
+  function snoozedPhoto(cardId) { return !!(state.snoozePhoto && state.snoozePhoto[cardId] > Date.now()); }
+  function snoozeName(cardId) { if (!cardId) return; if (!state.snoozeName) state.snoozeName = {}; state.snoozeName[cardId] = Date.now() + 120000; setTimeout(function () { try { render(); } catch (e) {} }, 120200); }
+  function snoozePhoto(cardId) { if (!cardId) return; if (!state.snoozePhoto) state.snoozePhoto = {}; state.snoozePhoto[cardId] = Date.now() + 120000; setTimeout(function () { try { render(); } catch (e) {} }, 120200); }
+  // the two INDEPENDENT gates a member tile can hold: a NAME issue (mismatch/close/family) and a PHOTO need.
+  // Acknowledging one never satisfies the other — so PASS NICKNAME clears the name prompt but leaves ADD PHOTO.
+  function nameGate(info) { return !!(info && !info.pending && (info.mismatch || info.family || info.closematch)); }
+  function photoGate(w, info) { return !!(info && !info.pending && info.member && !info.misaligned && !info.paidMember && !w.querySelector('img.rcz-photo')); }
   // Fire ROLLER's own "Add items" control (same as clicking the Add items link in the booking panel).
   function clickAddItems() {
     var els = document.querySelectorAll('button, a, [role="button"]');
@@ -1240,7 +1241,7 @@
       '</div>';
     document.body.appendChild(scrim);
     var b = scrim.querySelector('.rcz-ho-btn');
-    if (b) b.addEventListener('click', function () { scrim.remove(); if (cardId) { snooze(cardId); try { render(); } catch (e) {} } });
+    if (b) b.addEventListener('click', function () { scrim.remove(); if (cardId) { snoozePhoto(cardId); try { render(); } catch (e) {} } });
   }
   // The two things a member card can require before check-in, as ACTION REQUIRED links (#6): ADD NAME (for a
   // family slot with no individual name) and/or ADD PHOTO (no photo on file). ADD NAME forwards to the Guest
@@ -1462,8 +1463,11 @@
         else if (info && !info.pending && info.member === false && !info.misaligned) paintStatusEmpty(w); // casual/foster: blank band for tile consistency
         else clrStatus(w);
         if (!state.unlocked) state.unlocked = {};
-        if (snoozed(cardId)) { clrActionReq(w); clrNameAct(w); clrMismatch(w); }   // #2: 2-min acknowledge -> hide prompts
-        w.classList.toggle('rcz-locked', needsAction(w, info) && !state.unlocked[cardId] && !snoozed(cardId));
+        // #2: name-ack hides ONLY the name prompt (overlay + ACTION REQUIRED/name box) and keeps the photo
+        // requirement; photo-ack (visiting handoff) hides ONLY the ADD PHOTO box. Each gate locks on its own.
+        if (snoozedName(cardId)) { clrNameAct(w); clrMismatch(w); if (!photoGate(w, info)) clrActionReq(w); }
+        if (snoozedPhoto(cardId)) clrActionReq(w);
+        w.classList.toggle('rcz-locked', !state.unlocked[cardId] && ((nameGate(info) && !snoozedName(cardId)) || (photoGate(w, info) && !snoozedPhoto(cardId))));
         var bm = state.birthdays[cardId];
         if (CFG.SHOW_BIRTHDAY && bm && birthdayInWindow(bm)) {
           addBirthday(w, bm);
@@ -1562,7 +1566,7 @@
           // not a permanent unlock. ADD TICKET also fires ROLLER's own "Add items" flow.
           if (_act === 'addticket' || _act === 'nickname') {
             if (_act === 'addticket') clickAddItems();
-            if (uid) snooze(uid);
+            if (uid) snoozeName(uid);
             render();
             return;
           }
