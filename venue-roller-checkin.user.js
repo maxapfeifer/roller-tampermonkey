@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Venue — ROLLER Check-in Cards + Member Photos
 // @namespace    venue.roller.checkin-cards
-// @version      5.83
+// @version      5.84
 // @description  Reformats the ROLLER POS booking check-in list into full-frame photo cards, surfaces member photos on load (no Verify click), alerts when a member has no photo, handles family memberships (best-effort photos + add-name prompt) and close/similar name matches.
 // @match        https://pos.roller.app/*
 // @match        https://*.roller.app/*
@@ -1176,7 +1176,7 @@
     var hd = heading == null ? CFG.WARN_HEADING : heading;
     var sb = sub == null ? CFG.WARN_SUB : sub;   // pass '' to drop the sub-line (e.g. the mismatch action box)
     var linkEls = actions.map(function (a) {
-      return '<a href="#" data-rcz-unlock="' + esc(cardId) + '"' + (a.kind ? ' data-rcz-act="' + esc(a.kind) + '"' : '') + (a.href ? ' data-rcz-href="' + esc(a.href) + '"' : '') + (a.ticket ? ' data-rcz-ticket="1"' : '') + '>' + esc(a.label) + '</a>';
+      return '<a href="#" data-rcz-unlock="' + esc(cardId) + '"' + (a.kind ? ' data-rcz-act="' + esc(a.kind) + '"' : '') + (a.href ? ' data-rcz-href="' + esc(a.href) + '"' : '') + (a.ticket ? ' data-rcz-ticket="1"' : '') + (a.photonav ? ' data-rcz-photonav="1"' : '') + '>' + esc(a.label) + '</a>';
     });
     // the mismatch box joins its two choices with a same-size "or": ADD TICKET or PASS NICKNAME
     var links = mm ? linkEls.join('<span class="rcz-actreq__or">or</span>') : linkEls.join('');
@@ -1320,6 +1320,9 @@
     addMemStrip(w, info.uses);                                       // dark "MEMBERSHIP: N USES" strip
     addBadge(w, membershipTier(host));
     addMemName(w, info.type, info.first);
+    // FRAUD WARNING / ADD PHOTO on a membership-search card that has no photo (same as the booking tiles)
+    var _mpc = btn ? btn.id.replace('booking-details-button-', '') : null;
+    if (!mHasPhoto && _mpc) addActionReq(w, _mpc, [{ label: 'ADD PHOTO', kind: 'photo', photonav: true }]);
     var oldPanel = w.querySelector('.rcz-mem-info'); if (oldPanel) oldPanel.remove();  // drop old Starts/Ends panel
     // Birthday flag — top-right, same as ticket cards
     var memCardId = btn ? btn.id.replace('booking-details-button-', '') : null;
@@ -1620,6 +1623,13 @@
             var _th = unl.closest ? unl.closest('app-bip-summary') : null;
             var _tt = _th ? _th.querySelector('button[id^="booking-details-button-"]') : null;
             if (_tt) { _tt.click(); openGuestTabSoon(); }
+            return;
+          }
+          // membership-search ADD PHOTO: open THIS card's own Guest tab (no visiting-handoff modal)
+          if (unl.getAttribute('data-rcz-photonav')) {
+            var _ph = unl.closest ? unl.closest('app-bip-summary') : null;
+            var _pt = _ph ? _ph.querySelector('button[id^="booking-details-button-"]') : null;
+            if (_pt) { _pt.click(); openGuestTabSoon(); }
             return;
           }
           var uhref = unl.getAttribute('data-rcz-href');
