@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Venue — ROLLER Check-in Cards + Member Photos
 // @namespace    venue.roller.checkin-cards
-// @version      5.69
+// @version      5.70
 // @description  Reformats the ROLLER POS booking check-in list into full-frame photo cards, surfaces member photos on load (no Verify click), alerts when a member has no photo, handles family memberships (best-effort photos + add-name prompt) and close/similar name matches.
 // @match        https://pos.roller.app/*
 // @match        https://*.roller.app/*
@@ -627,7 +627,7 @@
       if (mem && !CFG.SHOW_MEMBERSHIP) {                              // or leave it as ROLLER draws it
         if (!host.classList.contains('rcz-skip')) {
           host.classList.add('rcz-skip');
-          host.querySelectorAll('.rcz-alert,.rcz-casual,.rcz-mismatch,.rcz-visiting,.rcz-badge,.rcz-note,.rcz-bday,.rcz-meaning,.rcz-status,.rcz-actreq,.rcz-botbar,.rcz-memstrip,.rcz-mem-info,.rcz-mem-name,img.rcz-photo').forEach(function (e) { e.remove(); });
+          host.querySelectorAll('.rcz-alert,.rcz-casual,.rcz-mismatch,.rcz-visiting,.rcz-badge,.rcz-note,.rcz-bday,.rcz-meaning,.rcz-status,.rcz-actreq,.rcz-nameact,.rcz-botbar,.rcz-memstrip,.rcz-mem-info,.rcz-mem-name,img.rcz-photo').forEach(function (e) { e.remove(); });
           host.querySelectorAll('.rcz-alert-on,.rcz-casual-on,.rcz-mismatch-on,.rcz-visiting-on').forEach(function (w) { w.classList.remove('rcz-alert-on', 'rcz-casual-on', 'rcz-mismatch-on', 'rcz-visiting-on'); });
         }
       } else {
@@ -727,8 +727,8 @@
       'app-bip-summary:not(.rcz-skip) .summary__wrapper button[id^="booking-details-button"] img.rcz-ageicon{position:absolute !important;top:44% !important;left:50% !important;transform:translate(-50%,-50%) !important;width:auto !important;height:62% !important;max-width:74% !important;object-fit:contain !important;pointer-events:none !important;z-index:2 !important;}',
       /* age-TEXT (#2, replaces the silhouette): ticket type over the name, centred, medium size */
       'app-bip-summary:not(.rcz-skip) .summary__wrapper button[id^="booking-details-button"] .rcz-agetext{position:absolute !important;top:42% !important;left:50% !important;transform:translate(-50%,-50%) !important;width:86% !important;z-index:2 !important;pointer-events:none !important;text-align:center !important;}',
-      '.rcz-agetext__ty{font:600 18px/1.15 Roboto,Arial,sans-serif !important;color:#5b636d !important;letter-spacing:.02em !important;}',
-      '.rcz-agetext__nm{font:700 22px/1.15 Roboto,Arial,sans-serif !important;color:#1f2933 !important;margin-top:3px !important;overflow-wrap:anywhere !important;}',
+      '.rcz-agetext__ty{font:600 36px/1.15 Roboto,Arial,sans-serif !important;color:#5b636d !important;letter-spacing:.02em !important;}',
+      '.rcz-agetext__nm{font:700 44px/1.12 Roboto,Arial,sans-serif !important;color:#1f2933 !important;margin-top:5px !important;overflow-wrap:anywhere !important;}',
       /* MISMATCH (member, ticket name != membership name) — red, card-filling; icon hidden */
       '.rcz-mismatch{position:absolute !important;inset:0 !important;display:flex !important;flex-direction:column !important;align-items:center !important;justify-content:center !important;text-align:center !important;color:#e5231b !important;z-index:5 !important;pointer-events:none !important;padding:16px 20px 78px !important;gap:14px !important;}',
       '.rcz-mismatch__hd{font:900 48px/1 Roboto,Arial,sans-serif !important;letter-spacing:.02em !important;}',
@@ -810,10 +810,13 @@
          themselves to the tile (min(cap, N cqw)) and always land on ONE line — no wrap, less grey hidden.
          On a wide tile they cap at the approved 23/15px; on a narrow tile they shrink just enough to fit. */
       '.rcz-actreq{position:absolute !important;left:8px !important;right:8px !important;transform:none !important;max-width:none !important;bottom:76px !important;z-index:6 !important;pointer-events:none !important;container-type:inline-size !important;background:rgba(255,255,255,.86) !important;-webkit-backdrop-filter:blur(4px) !important;backdrop-filter:blur(4px) !important;border-radius:13px !important;padding:12px 12px 13px !important;box-shadow:0 3px 12px rgba(0,0,0,.18) !important;text-align:center !important;}',
+      /* NAME-action box (fix #1): a second frosted card, identical style, stacked ABOVE the ADD PHOTO box on a
+         no-photo close/mismatch tile. Its bottom is set in JS to clear the box below it. Reuses __hd/__links. */
+      '.rcz-nameact{position:absolute !important;left:8px !important;right:8px !important;bottom:168px !important;z-index:6 !important;pointer-events:none !important;container-type:inline-size !important;background:rgba(255,255,255,.86) !important;-webkit-backdrop-filter:blur(4px) !important;backdrop-filter:blur(4px) !important;border-radius:13px !important;padding:12px 12px 13px !important;box-shadow:0 3px 12px rgba(0,0,0,.18) !important;text-align:center !important;}',
       '.rcz-actreq__hd{font-family:Roboto,Arial,sans-serif !important;font-weight:800 !important;font-size:min(23px,6.5cqw) !important;line-height:1.12 !important;white-space:nowrap !important;letter-spacing:.01em !important;color:#e5231b !important;}',
       '.rcz-actreq__sub{font-family:Roboto,Arial,sans-serif !important;font-weight:700 !important;font-size:min(15px,4.1cqw) !important;line-height:1.25 !important;white-space:nowrap !important;letter-spacing:.02em !important;color:#a12a20 !important;margin-top:5px !important;}',
       '.rcz-actreq__links{display:flex !important;gap:16px !important;justify-content:center !important;margin-top:8px !important;flex-wrap:wrap !important;}',
-      '.rcz-actreq a,.rcz-addlink{color:#2f6fed !important;text-decoration:underline !important;text-underline-offset:2px !important;pointer-events:auto !important;cursor:pointer !important;font:700 12px/1 Roboto,Arial,sans-serif !important;}',
+      '.rcz-actreq a,.rcz-nameact a,.rcz-addlink{color:#2f6fed !important;text-decoration:underline !important;text-underline-offset:2px !important;pointer-events:auto !important;cursor:pointer !important;font:700 12px/1 Roboto,Arial,sans-serif !important;}',
       '.rcz-actreq__links a{font-family:Roboto,Arial,sans-serif !important;font-weight:800 !important;font-size:min(23px,6.5cqw) !important;line-height:1.1 !important;white-space:nowrap !important;}',
       '.rcz-addlink{font-size:16px !important;margin-left:8px !important;}'
     ].join('\n');
@@ -1174,6 +1177,18 @@
     if (el.getAttribute('data-h') !== html) { el.innerHTML = html; el.setAttribute('data-h', html); }
   }
   function clrActionReq(w) { var el = w.querySelector('.rcz-actreq'); if (el) el.remove(); }
+  // Fix #1: the NAME-action box (ACTION REQUIRED · ADD TICKET / PASS NICKNAME), a second frosted card stacked
+  // above the ADD PHOTO box so a no-photo close/mismatch tile still surfaces the name issue. Links unlock the shield.
+  function addNameAct(w, cardId) {
+    var el = w.querySelector('.rcz-nameact');
+    if (!el) { el = document.createElement('div'); el.className = 'rcz-nameact'; w.appendChild(el); }
+    var links = '<a href="#" data-rcz-unlock="' + esc(cardId) + '">ADD TICKET</a>' +
+                '<a href="#" data-rcz-unlock="' + esc(cardId) + '">PASS NICKNAME</a>';
+    var html = '<div class="rcz-actreq__hd">' + esc(CFG.MISMATCH_ACTREQ_HD) + '</div>' +
+               '<div class="rcz-actreq__links">' + links + '</div>';
+    if (el.getAttribute('data-h') !== html) { el.innerHTML = html; el.setAttribute('data-h', html); }
+  }
+  function clrNameAct(w) { var el = w.querySelector('.rcz-nameact'); if (el) el.remove(); }
   // The two things a member card can require before check-in, as ACTION REQUIRED links (#6): ADD NAME (for a
   // family slot with no individual name) and/or ADD PHOTO (no photo on file). ADD NAME forwards to the Guest
   // tab (kind 'name'); ADD PHOTO opens ROLLER's native verification panel in place (kind 'photo', see #3).
@@ -1256,7 +1271,7 @@
       if (!activeRoute()) {
         // not the booking check-in list -> strip our styling/overlays so ROLLER's native pages work
         var st = document.getElementById('rcz-style'); if (st) st.remove();
-        document.querySelectorAll('.rcz-alert, .rcz-casual, .rcz-mismatch, .rcz-visiting, .rcz-badge, .rcz-note, .rcz-bday, .rcz-meaning, .rcz-status, .rcz-actreq, .rcz-botbar, .rcz-mem-info, .rcz-mem-name, .rcz-memstrip, img.rcz-photo').forEach(function (e) { e.remove(); });
+        document.querySelectorAll('.rcz-alert, .rcz-casual, .rcz-mismatch, .rcz-visiting, .rcz-badge, .rcz-note, .rcz-bday, .rcz-meaning, .rcz-status, .rcz-actreq, .rcz-nameact, .rcz-botbar, .rcz-mem-info, .rcz-mem-name, .rcz-memstrip, img.rcz-photo').forEach(function (e) { e.remove(); });
         document.querySelectorAll('.rcz-alert-on, .rcz-casual-on, .rcz-mismatch-on, .rcz-visiting-on, .rcz-locked').forEach(function (w) { w.classList.remove('rcz-alert-on', 'rcz-casual-on', 'rcz-mismatch-on', 'rcz-visiting-on', 'rcz-locked'); });
         document.querySelectorAll('app-bip-summary.rcz-mem, app-bip-summary.rcz-skip').forEach(function (h) { h.classList.remove('rcz-mem', 'rcz-skip'); });
         document.querySelectorAll('app-bip-summary:not(.rcz-skip) button[id^="booking-details-button-"] mat-icon').forEach(function (ic) { ic.style.display = ''; });
@@ -1378,6 +1393,12 @@
         // so the two stack clearly instead of overlapping (position is easy to tweak later).
         var _mm = w.querySelector('.rcz-mismatch'), _ar = w.querySelector('.rcz-actreq');
         if (_ar) _ar.style.bottom = _mm ? '176px' : '';
+        // Fix #1: no-photo close-match member -> stack the NAME-action box above the ADD PHOTO box (_ar)
+        if (info && !info.pending && info.closematch && !w.querySelector('img.rcz-photo')) {
+          addNameAct(w, cardId);
+          var _na = w.querySelector('.rcz-nameact');
+          if (_na && _ar) _na.style.bottom = ((_mm ? 176 : 76) + _ar.offsetHeight + 8) + 'px';
+        } else { clrNameAct(w); }
         // --- status band + prototype extras, independent of the card state above ---
         var si = statusInfo(w, info);
         if (si) paintStatus(w, si.nm, si.nmW, si.ph, si.phW);

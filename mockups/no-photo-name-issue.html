@@ -1,0 +1,131 @@
+<title>No-photo name mismatch — surface the fix</title>
+<style>
+  :root{
+    --bg:#e9ebef; --panel:#ffffff; --ink:#1e242b; --muted:#6a7480; --hair:#d8dce2;
+    --eyebrow:#b23029; --chip:#f0f2f5; --chip-ink:#515a64;
+    --tile:#f4f5f7; --tile-none:#e6e8eb; --tile-hair:#e3e6ea;
+    --warn-red:#e5231b; --warn-sub:#a12a20; --warn-link:#2f6fed; --tier-blue:#2f6fed;
+    --ui:-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif; --roboto:Roboto,Arial,sans-serif;
+  }
+  @media (prefers-color-scheme:dark){
+    :root{ --bg:#14171b; --panel:#1b2026; --ink:#e6e9ec; --muted:#98a1ac; --hair:#2a2f37;
+      --eyebrow:#f08a83; --chip:#252b33; --chip-ink:#aab3bd; --tile:#20262d; --tile-none:#2a313a; --tile-hair:#333b45; }
+  }
+  :root[data-theme="light"]{ --bg:#e9ebef; --panel:#fff; --ink:#1e242b; --muted:#6a7480; --hair:#d8dce2; --tile:#f4f5f7; --tile-none:#e6e8eb; --tile-hair:#e3e6ea; }
+  :root[data-theme="dark"]{ --bg:#14171b; --panel:#1b2026; --ink:#e6e9ec; --muted:#98a1ac; --hair:#2a2f37; --tile:#20262d; --tile-none:#2a313a; --tile-hair:#333b45; }
+
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--ui);line-height:1.5;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:1040px;margin:0 auto;padding:44px 24px 80px}
+  .eyebrow{font-size:11.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--eyebrow);font-weight:700;margin:0 0 8px}
+  h1{font-size:27px;line-height:1.14;margin:0 0 10px;letter-spacing:-.01em;text-wrap:balance}
+  .lede{max-width:66ch;color:var(--muted);margin:0 0 6px;font-size:15px}
+  .lede b{color:var(--ink);font-weight:600}
+  .status-note{display:inline-flex;gap:8px;font-size:12.5px;color:var(--muted);background:var(--panel);border:1px solid var(--hair);border-radius:999px;padding:5px 13px;margin:14px 0 0}
+  .status-note b{color:var(--ink);font-weight:600}
+
+  .cols{display:flex;gap:26px;flex-wrap:wrap;align-items:flex-start;margin-top:34px}
+  .col{display:flex;flex-direction:column;gap:10px;width:300px}
+  .col h3{margin:0;font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);display:flex;align-items:center;gap:8px;font-weight:700}
+  .col h3 .dot{width:8px;height:8px;border-radius:50%}
+  .now h3 .dot{background:#9aa3ad}
+  .a h3 .dot{background:var(--warn-red)}
+  .b h3 .dot{background:#2f9e6f}
+  .cap{font-size:12px;color:var(--muted);text-align:center;margin:2px 0 0}
+  .cap b{color:var(--ink)}
+  .pill{display:inline-block;font:600 11px/1.4 var(--roboto);background:var(--chip);color:var(--chip-ink);border-radius:5px;padding:1px 6px}
+
+  .tile{position:relative;border-radius:14px;overflow:hidden;background:var(--tile);aspect-ratio:1/1;
+    box-shadow:0 1px 3px rgba(0,0,0,.16),0 8px 22px rgba(0,0,0,.07);display:flex;flex-direction:column}
+  .figs{position:absolute;inset:0;background:var(--tile-none)}
+  .figs::after{content:"";position:absolute;inset:0;background:url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="120" height="150" viewBox="0 0 120 150"><g fill="rgba(140,148,158,.5)"><circle cx="60" cy="56" r="27"/><path d="M20 150c0-26 18-42 40-42s40 16 40 42z"/></g></svg>') center 44%/50% no-repeat}
+
+  .status{position:relative;z-index:6;background:rgba(255,255,255,.55);-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);
+    border-bottom:1px solid rgba(0,0,0,.07);padding:7px 11px 5px;font:400 12.5px/1.32 var(--roboto);color:#1f2933}
+  .status .warn{color:#e5231b}
+  @media (prefers-color-scheme:dark){ .status{color:#1f2933} }
+
+  .stack{position:relative;z-index:3;flex:1;display:flex;flex-direction:column;justify-content:flex-end;
+    align-items:center;gap:8px;padding:8px 8px 8px}
+
+  .actbox{width:calc(100% - 4px);background:rgba(255,255,255,.9);-webkit-backdrop-filter:blur(4px);backdrop-filter:blur(4px);
+    border-radius:12px;padding:9px 12px 10px;box-shadow:0 3px 12px rgba(0,0,0,.18);text-align:center}
+  .actbox .hd{font:800 18px/1.1 var(--roboto);letter-spacing:.01em;color:var(--warn-red)}
+  .actbox .sub{font:700 11px/1.22 var(--roboto);letter-spacing:.02em;color:var(--warn-sub);margin-top:3px}
+  .actbox .links{display:flex;gap:12px;justify-content:center;margin-top:6px;flex-wrap:wrap}
+  .actbox .links a{font:800 15px/1 var(--roboto);color:var(--warn-link);text-decoration:underline;text-underline-offset:2px;white-space:nowrap}
+
+  .botbar{position:relative;z-index:4;background:rgba(255,255,255,.55);border-top:1px solid var(--tile-hair);
+    -webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:8px;padding:8px 11px;min-height:50px}
+  .rcz-badge{display:flex;flex-direction:column;align-items:flex-start;white-space:nowrap;line-height:1.3}
+  .rcz-badge span{font:700 15px/1.3 var(--roboto);color:var(--tier-blue)}
+  .who{text-align:right;font:400 13px/1.28 var(--roboto);color:#1f2933}
+  .who .ty{display:block;color:#7b828c;font-weight:600}
+  .who .nm{display:block;font-weight:800;color:#111827}
+  @media (prefers-color-scheme:dark){ .who,.who .nm{color:#1f2933} }
+  .shield{width:32px;height:34px;flex:none}
+</style>
+
+<div class="wrap">
+  <p class="eyebrow">ROLLER Check-in · fix proposal</p>
+  <h1>Surface the name issue even when there's no photo</h1>
+  <p class="lede">Booking 108635210, ticket <b>Ninaj</b> on membership <b>Nina John</b>. Because "Nina" is a
+    clean prefix of "Ninaj", it's a <span class="pill">closematch</span> (soft), and with no photo on file the
+    tile currently falls through to <b>only</b> the ADD PHOTO prompt — the name issue never gets an action,
+    even though the top band already says "Name: Not Matching". Fix #1 makes the name action always appear.</p>
+  <p class="status-note"><b>Status:</b>&nbsp;proposal only · not yet coded · pick a layout below</p>
+
+  <div class="cols">
+    <!-- CURRENT -->
+    <div class="col now">
+      <h3><span class="dot"></span>Now (5.69)</h3>
+      <div class="tile">
+        <div class="figs"></div>
+        <div class="status">Name: <span class="warn">Not Matching</span><br>Photo: <span class="warn">Required Today</span></div>
+        <div class="stack">
+          <div class="actbox"><div class="hd">WARNING: MISSING DATA!</div><div class="sub">COMPLETE PROFILE TO AVOID CANCELLATION</div><div class="links"><a href="#">ADD PHOTO</a></div></div>
+        </div>
+        <div class="botbar"><div class="rcz-badge"><span>Wonder Club</span><span>Member</span></div>
+          <div class="who"><span class="ty">Child</span><span class="nm">Ninaj</span></div>
+          <svg class="shield" viewBox="0 0 66 68"><path d="M33 3 L61 12 L61 33 C61 49 48 59 33 64 C18 59 5 49 5 33 L5 12 Z" fill="#c9cdd3"/></svg>
+        </div>
+      </div>
+      <p class="cap">Name problem invisible — only ADD PHOTO shows</p>
+    </div>
+
+    <!-- OPTION A -->
+    <div class="col a">
+      <h3><span class="dot"></span>Option A · two boxes</h3>
+      <div class="tile">
+        <div class="figs"></div>
+        <div class="status">Name: <span class="warn">Not Matching</span><br>Photo: <span class="warn">Required Today</span></div>
+        <div class="stack">
+          <div class="actbox"><div class="hd">ACTION REQUIRED</div><div class="links"><a href="#">ADD TICKET</a><a href="#">PASS NICKNAME</a></div></div>
+          <div class="actbox"><div class="hd">WARNING: MISSING DATA!</div><div class="sub">COMPLETE PROFILE TO AVOID CANCELLATION</div><div class="links"><a href="#">ADD PHOTO</a></div></div>
+        </div>
+        <div class="botbar"><div class="rcz-badge"><span>Wonder Club</span><span>Member</span></div>
+          <div class="who"><span class="ty">Child</span><span class="nm">Ninaj</span></div>
+          <svg class="shield" viewBox="0 0 66 68"><path d="M33 3 L61 12 L61 33 C61 49 48 59 33 64 C18 59 5 49 5 33 L5 12 Z" fill="#c9cdd3"/></svg>
+        </div>
+      </div>
+      <p class="cap">Name action box stacked above the photo box</p>
+    </div>
+
+    <!-- OPTION B -->
+    <div class="col b">
+      <h3><span class="dot"></span>Option B · one combined box</h3>
+      <div class="tile">
+        <div class="figs"></div>
+        <div class="status">Name: <span class="warn">Not Matching</span><br>Photo: <span class="warn">Required Today</span></div>
+        <div class="stack">
+          <div class="actbox"><div class="hd">ACTION REQUIRED</div><div class="sub">MEMBERSHIP IS UNDER NINA, NOT NINAJ &middot; NO PHOTO ON FILE</div><div class="links"><a href="#">ADD TICKET</a><a href="#">PASS NICKNAME</a><a href="#">ADD PHOTO</a></div></div>
+        </div>
+        <div class="botbar"><div class="rcz-badge"><span>Wonder Club</span><span>Member</span></div>
+          <div class="who"><span class="ty">Child</span><span class="nm">Ninaj</span></div>
+          <svg class="shield" viewBox="0 0 66 68"><path d="M33 3 L61 12 L61 33 C61 49 48 59 33 64 C18 59 5 49 5 33 L5 12 Z" fill="#c9cdd3"/></svg>
+        </div>
+      </div>
+      <p class="cap">One box, both issues, three actions — most compact</p>
+    </div>
+  </div>
+</div>
