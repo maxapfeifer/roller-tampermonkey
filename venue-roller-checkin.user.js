@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Venue — ROLLER Check-in Cards + Member Photos
 // @namespace    venue.roller.checkin-cards
-// @version      5.82
+// @version      5.83
 // @description  Reformats the ROLLER POS booking check-in list into full-frame photo cards, surfaces member photos on load (no Verify click), alerts when a member has no photo, handles family memberships (best-effort photos + add-name prompt) and close/similar name matches.
 // @match        https://pos.roller.app/*
 // @match        https://*.roller.app/*
@@ -30,7 +30,7 @@
      CONFIG  — the dials you can safely tweak
      ====================================================================== */
   var CFG = {
-    MIN_COLUMN_PX:     400,  // smaller = more (and smaller) cards per row; larger = fewer, bigger photos
+    MIN_COLUMN_PX:     360,  // smaller = more (and smaller) cards per row; larger = fewer, bigger photos
     GAP_PX:            12,   // gutter between cards
     CARD_RADIUS_PX:    18,
     PLACEHOLDER_ICON_PX: 150,// size of the grey person icon when there's no photo
