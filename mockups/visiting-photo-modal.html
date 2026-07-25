@@ -1,0 +1,116 @@
+<title>Visiting-member photo handoff — modal mockup</title>
+<style>
+  :root{
+    --bg:#e7e9ee; --panel:#ffffff; --ink:#1c222b; --muted:#69727e; --hair:#d9dde3;
+    --scrim:rgba(16,19,27,.58);
+    --accent:#b4308f; --accent-deep:#8a2470; --accent-soft:#f6ecf3;
+    --idink:#1c222b; --idbg:#f4f6f8; --idborder:#e2e6ec;
+    --primary-ink:#ffffff;
+    --ui:-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  }
+  @media (prefers-color-scheme:dark){
+    :root{ --bg:#12151a; --panel:#1b2027; --ink:#e7eaee; --muted:#98a1ac; --hair:#2b323b;
+      --scrim:rgba(4,6,10,.66); --accent:#dd77c6; --accent-deep:#c559ab; --accent-soft:#2a2130;
+      --idink:#e7eaee; --idbg:#232a33; --idborder:#333c47; }
+  }
+  :root[data-theme="light"]{ --bg:#e7e9ee; --panel:#fff; --ink:#1c222b; --muted:#69727e; --hair:#d9dde3; --scrim:rgba(16,19,27,.58); --accent:#b4308f; --accent-deep:#8a2470; --accent-soft:#f6ecf3; --idink:#1c222b; --idbg:#f4f6f8; --idborder:#e2e6ec; }
+  :root[data-theme="dark"]{ --bg:#12151a; --panel:#1b2027; --ink:#e7eaee; --muted:#98a1ac; --hair:#2b323b; --scrim:rgba(4,6,10,.66); --accent:#dd77c6; --accent-deep:#c559ab; --accent-soft:#2a2130; --idink:#e7eaee; --idbg:#232a33; --idborder:#333c47; }
+
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--ui);-webkit-font-smoothing:antialiased}
+
+  /* faint faux-booking backdrop so the modal reads as "over the booking screen" */
+  .app{position:absolute;inset:0;display:flex;filter:saturate(.9)}
+  .app .rail{width:64px;background:#2b2f36;flex:none}
+  .app .side{width:230px;background:var(--panel);border-right:1px solid var(--hair)}
+  .app .main{flex:1;padding:26px;display:grid;grid-template-columns:1fr 1fr;gap:18px;align-content:start}
+  .app .card{height:150px;border-radius:12px;background:var(--panel);border:1px solid var(--hair)}
+  @media (max-width:640px){ .app .side{display:none} .app .main{grid-template-columns:1fr} }
+
+  /* scrim + modal */
+  .scrim{position:fixed;inset:0;background:var(--scrim);-webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px);
+    display:flex;align-items:center;justify-content:center;padding:24px;z-index:50;
+    opacity:1;transition:opacity .22s ease}
+  .scrim.hidden{opacity:0;pointer-events:none}
+  @media (prefers-reduced-motion:reduce){ .scrim{transition:none} }
+
+  .modal{width:min(520px,100%);background:var(--panel);border-radius:20px;
+    box-shadow:0 24px 70px rgba(0,0,0,.4),0 4px 14px rgba(0,0,0,.22);
+    padding:34px 34px 28px;text-align:center;position:relative;overflow:hidden;
+    transform:translateY(0) scale(1);transition:transform .22s ease}
+  .scrim.hidden .modal{transform:translateY(8px) scale(.98)}
+  .modal::before{content:"";position:absolute;left:0;right:0;top:0;height:5px;background:linear-gradient(90deg,var(--accent),var(--accent-deep))}
+
+  .badge{width:66px;height:66px;border-radius:50%;background:var(--accent-soft);display:grid;place-items:center;margin:6px auto 18px}
+  .badge svg{width:34px;height:34px;stroke:var(--accent);fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+
+  .eyebrow{font-size:20px;letter-spacing:.10em;text-transform:uppercase;color:var(--accent);font-weight:800;margin:0 0 14px}
+  h1{font-size:25px;line-height:1.15;margin:0 0 12px;letter-spacing:-.01em;text-wrap:balance}
+  .body{font-size:16px;line-height:1.5;color:var(--muted);margin:0 auto 22px;max-width:40ch}
+  .body b{color:var(--ink);font-weight:600}
+
+  .idwrap{display:flex;align-items:stretch;gap:10px;justify-content:center;margin:0 0 26px}
+  .idbox{flex:1;max-width:360px;background:var(--idbg);border:1px solid var(--idborder);border-radius:12px;
+    padding:13px 16px;text-align:center}
+  .idbox .lbl{font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);font-weight:700;margin:0 0 5px}
+  .idbox .val{font-family:var(--mono);font-size:24px;font-weight:600;color:var(--idink);letter-spacing:.01em;line-height:1.2;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+  .copy{flex:none;border:1px solid var(--idborder);background:var(--panel);color:var(--ink);border-radius:12px;
+    padding:0 16px;font:600 13px/1 var(--ui);cursor:pointer;display:flex;align-items:center;gap:7px;transition:background .15s,border-color .15s}
+  .copy:hover{background:var(--accent-soft);border-color:var(--accent)}
+  .copy svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+  .copy.done{color:var(--accent-deep);border-color:var(--accent)}
+
+  .foot{font-size:12.5px;color:var(--muted);margin:16px 0 22px}
+
+  .dismiss{appearance:none;border:none;cursor:pointer;width:100%;padding:15px 20px;border-radius:13px;
+    background:var(--accent);color:var(--primary-ink);font:800 16px/1 var(--ui);letter-spacing:.01em;
+    box-shadow:0 4px 14px rgba(138,36,112,.34);transition:filter .15s,transform .05s}
+  .dismiss:hover{filter:brightness(1.05)}
+  .dismiss:active{transform:translateY(1px)}
+  .dismiss:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+
+  /* re-demo button when dismissed */
+  .reopen{position:fixed;left:50%;bottom:26px;transform:translateX(-50%);z-index:60;
+    background:var(--panel);color:var(--ink);border:1px solid var(--hair);border-radius:999px;
+    padding:10px 18px;font:600 13px/1 var(--ui);cursor:pointer;box-shadow:0 6px 20px rgba(0,0,0,.18);
+    opacity:0;pointer-events:none;transition:opacity .2s}
+  .reopen.show{opacity:1;pointer-events:auto}
+</style>
+
+<div class="app" aria-hidden="true">
+  <div class="rail"></div>
+  <div class="side"></div>
+  <div class="main"><div class="card"></div><div class="card"></div><div class="card"></div><div class="card"></div></div>
+</div>
+
+<div class="scrim" id="scrim" role="dialog" aria-modal="true" aria-labelledby="mtitle">
+  <div class="modal">
+    <div class="badge" aria-hidden="true">
+      <svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><path d="M8 9h8M8 13h5"/></svg>
+    </div>
+    <p class="eyebrow">Visiting member · photo added</p>
+    <h1 id="mtitle">One more step before you move on</h1>
+    <p class="body">Please <b>send a WhatsApp message the admin team quoting the below</b>, so that the photo you've taken can be transferred to the member's profile.</p>
+
+    <div class="idwrap">
+      <div class="idbox"><p class="lbl">Quote this</p><p class="val" id="bid">MEMBER PHOTO 108705073</p></div>
+    </div>
+    <button class="dismiss" id="dismiss" type="button">CONFIRMED, DONE!</button>
+  </div>
+</div>
+
+<button class="reopen" id="reopen" type="button">▸ Replay the message</button>
+
+<script>
+  (function(){
+    var scrim=document.getElementById('scrim'), reopen=document.getElementById('reopen');
+    function close(){ scrim.classList.add('hidden'); reopen.classList.add('show'); }
+    function open(){ scrim.classList.remove('hidden'); reopen.classList.remove('show'); }
+    document.getElementById('dismiss').addEventListener('click', close);
+    reopen.addEventListener('click', open);
+    // Esc closes, matching a click on "CONFIRMED, DONE!"
+    document.addEventListener('keydown', function(e){ if(e.key==='Escape' && !scrim.classList.contains('hidden')) close(); });
+  })();
+</script>

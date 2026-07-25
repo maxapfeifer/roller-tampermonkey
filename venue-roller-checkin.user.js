@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Venue — ROLLER Check-in Cards + Member Photos
 // @namespace    venue.roller.checkin-cards
-// @version      5.70
+// @version      5.71
 // @description  Reformats the ROLLER POS booking check-in list into full-frame photo cards, surfaces member photos on load (no Verify click), alerts when a member has no photo, handles family memberships (best-effort photos + add-name prompt) and close/similar name matches.
 // @match        https://pos.roller.app/*
 // @match        https://*.roller.app/*
@@ -1169,7 +1169,7 @@
     var hd = heading == null ? CFG.WARN_HEADING : heading;
     var sb = sub == null ? CFG.WARN_SUB : sub;   // pass '' to drop the sub-line (e.g. the mismatch action box)
     var links = actions.map(function (a) {
-      return '<a href="#" data-rcz-unlock="' + esc(cardId) + '"' + (a.kind ? ' data-rcz-act="' + esc(a.kind) + '"' : '') + (a.href ? ' data-rcz-href="' + esc(a.href) + '"' : '') + '>' + esc(a.label) + '</a>';
+      return '<a href="#" data-rcz-unlock="' + esc(cardId) + '"' + (a.kind ? ' data-rcz-act="' + esc(a.kind) + '"' : '') + (a.href ? ' data-rcz-href="' + esc(a.href) + '"' : '') + (a.ticket ? ' data-rcz-ticket="1"' : '') + '>' + esc(a.label) + '</a>';
     }).join('');
     var html = '<div class="rcz-actreq__hd">' + esc(hd) + '</div>' +
                (sb ? '<div class="rcz-actreq__sub">' + esc(sb) + '</div>' : '') +
@@ -1189,13 +1189,48 @@
     if (el.getAttribute('data-h') !== html) { el.innerHTML = html; el.setAttribute('data-h', html); }
   }
   function clrNameAct(w) { var el = w.querySelector('.rcz-nameact'); if (el) el.remove(); }
+  // #4: full-screen blocking handoff prompt, shown once when staff return to the booking screen after adding
+  // a photo for a visiting-from-another-museum member. Cleared only by the CONFIRMED, DONE! button.
+  function showHandoffModal(id) {
+    if (document.getElementById('rcz-handoff-modal')) return;
+    if (!document.getElementById('rcz-handoff-css')) {
+      var css = document.createElement('style'); css.id = 'rcz-handoff-css';
+      css.textContent = [
+        '.rcz-ho-scrim{position:fixed !important;inset:0 !important;z-index:2147483000 !important;background:rgba(16,19,27,.58) !important;-webkit-backdrop-filter:blur(3px) !important;backdrop-filter:blur(3px) !important;display:flex !important;align-items:center !important;justify-content:center !important;padding:24px !important;font-family:Roboto,Arial,sans-serif !important;}',
+        '.rcz-ho-card{width:520px !important;max-width:100% !important;background:#fff !important;border-radius:20px !important;box-shadow:0 24px 70px rgba(0,0,0,.4) !important;padding:34px 34px 28px !important;text-align:center !important;position:relative !important;overflow:hidden !important;}',
+        '.rcz-ho-card:before{content:"" !important;position:absolute !important;left:0 !important;right:0 !important;top:0 !important;height:5px !important;background:linear-gradient(90deg,#b4308f,#8a2470) !important;}',
+        '.rcz-ho-eyebrow{font-size:20px !important;letter-spacing:.10em !important;text-transform:uppercase !important;color:#b4308f !important;font-weight:800 !important;margin:6px 0 14px !important;}',
+        '.rcz-ho-h1{font-size:25px !important;line-height:1.15 !important;color:#1c222b !important;font-weight:800 !important;margin:0 0 12px !important;}',
+        '.rcz-ho-body{font-size:16px !important;line-height:1.5 !important;color:#69727e !important;margin:0 auto 26px !important;max-width:40ch !important;}',
+        '.rcz-ho-body b{color:#1c222b !important;font-weight:600 !important;}',
+        '.rcz-ho-idbox{max-width:360px !important;margin:0 auto 26px !important;background:#f4f6f8 !important;border:1px solid #e2e6ec !important;border-radius:12px !important;padding:13px 16px !important;}',
+        '.rcz-ho-lbl{font-size:10.5px !important;letter-spacing:.14em !important;text-transform:uppercase !important;color:#69727e !important;font-weight:700 !important;margin:0 0 5px !important;}',
+        '.rcz-ho-val{font-family:ui-monospace,Menlo,Consolas,monospace !important;font-size:24px !important;font-weight:600 !important;color:#1c222b !important;line-height:1.2 !important;}',
+        '.rcz-ho-btn{-webkit-appearance:none !important;appearance:none !important;border:none !important;cursor:pointer !important;width:100% !important;padding:15px 20px !important;border-radius:13px !important;background:#b4308f !important;color:#fff !important;font:800 16px/1 Roboto,Arial,sans-serif !important;box-shadow:0 4px 14px rgba(138,36,112,.34) !important;}',
+        '.rcz-ho-btn:hover{filter:brightness(1.05) !important;}'
+      ].join('');
+      (document.head || document.documentElement).appendChild(css);
+    }
+    var scrim = document.createElement('div'); scrim.id = 'rcz-handoff-modal'; scrim.className = 'rcz-ho-scrim';
+    scrim.setAttribute('role', 'dialog'); scrim.setAttribute('aria-modal', 'true');
+    scrim.innerHTML = '<div class="rcz-ho-card">' +
+      '<div class="rcz-ho-eyebrow">Visiting member · photo added</div>' +
+      '<div class="rcz-ho-h1">One more step before you move on</div>' +
+      '<div class="rcz-ho-body">Please <b>send a WhatsApp message the admin team quoting the below</b>, so that the photo you\'ve taken can be transferred to the member\'s profile.</div>' +
+      '<div class="rcz-ho-idbox"><div class="rcz-ho-lbl">Quote this</div><div class="rcz-ho-val">MEMBER PHOTO ' + esc(id) + '</div></div>' +
+      '<button type="button" class="rcz-ho-btn">CONFIRMED, DONE!</button>' +
+      '</div>';
+    document.body.appendChild(scrim);
+    var b = scrim.querySelector('.rcz-ho-btn');
+    if (b) b.addEventListener('click', function () { scrim.remove(); });
+  }
   // The two things a member card can require before check-in, as ACTION REQUIRED links (#6): ADD NAME (for a
   // family slot with no individual name) and/or ADD PHOTO (no photo on file). ADD NAME forwards to the Guest
   // tab (kind 'name'); ADD PHOTO opens ROLLER's native verification panel in place (kind 'photo', see #3).
   function memberActions(w, info, cardId, hasPhoto) {
     var acts = [];
     if (info.family) acts.push({ label: 'ADD NAME', kind: 'name', href: memHref(info, cardId) });
-    if (!hasPhoto)   acts.push({ label: 'ADD PHOTO', kind: 'photo', href: memHref(info, cardId) });
+    if (!hasPhoto)   acts.push({ label: 'ADD PHOTO', kind: 'photo', href: memHref(info, cardId), ticket: !!info.visiting });
     return acts;
   }
   // Open ROLLER's own "Verify membership discount(s)" panel (the right-sliding photo-capture dialog) by
@@ -1275,9 +1310,13 @@
         document.querySelectorAll('.rcz-alert-on, .rcz-casual-on, .rcz-mismatch-on, .rcz-visiting-on, .rcz-locked').forEach(function (w) { w.classList.remove('rcz-alert-on', 'rcz-casual-on', 'rcz-mismatch-on', 'rcz-visiting-on', 'rcz-locked'); });
         document.querySelectorAll('app-bip-summary.rcz-mem, app-bip-summary.rcz-skip').forEach(function (h) { h.classList.remove('rcz-mem', 'rcz-skip'); });
         document.querySelectorAll('app-bip-summary:not(.rcz-skip) button[id^="booking-details-button-"] mat-icon').forEach(function (ic) { ic.style.display = ''; });
+        // #4: we've left the booking screen (e.g. onto the photo tab) -> promote an armed handoff to "ready"
+        try { var _hf = sessionStorage.getItem('rcz-handoff'); if (_hf && _hf.indexOf('armed:') === 0) sessionStorage.setItem('rcz-handoff', 'ready:' + _hf.slice(6)); } catch (e) {}
         return;
       }
       injectStyle();
+      // #4: back on the booking screen with a "ready" handoff for THIS booking -> fire the modal once
+      try { var _hb = (location.pathname.match(/\/bookings\/(\d+)/) || [])[1]; if (_hb && sessionStorage.getItem('rcz-handoff') === 'ready:' + _hb) { sessionStorage.removeItem('rcz-handoff'); showHandoffModal(_hb); } } catch (e) {}
       markSkips();
       ensureShields();
       shorten();
@@ -1397,7 +1436,7 @@
         if (info && !info.pending && info.closematch && !w.querySelector('img.rcz-photo')) {
           addNameAct(w, cardId);
           var _na = w.querySelector('.rcz-nameact');
-          if (_na && _ar) _na.style.bottom = ((_mm ? 176 : 76) + _ar.offsetHeight + 8) + 'px';
+          if (_na && _ar) _na.style.setProperty('bottom', ((_mm ? 176 : 76) + _ar.offsetHeight + 8) + 'px', 'important');
         } else { clrNameAct(w); }
         // --- status band + prototype extras, independent of the card state above ---
         var si = statusInfo(w, info);
@@ -1502,6 +1541,16 @@
           if (uid) state.unlocked[uid] = true;
           var uhost = unl.closest ? unl.closest('.summary__wrapper') : null;
           if (uhost) uhost.classList.remove('rcz-locked');
+          // #3/#4: a visiting-from-another-museum ADD PHOTO goes to the ticket's OWN Guest tab (not the
+          // membership), and arms the "text the admin team" handoff modal for when staff return here.
+          if (unl.getAttribute('data-rcz-ticket')) {
+            var _bid = (location.pathname.match(/\/bookings\/(\d+)/) || [])[1];
+            if (_bid) { try { sessionStorage.setItem('rcz-handoff', 'armed:' + _bid); } catch (e) {} }
+            var _th = unl.closest ? unl.closest('app-bip-summary') : null;
+            var _tt = _th ? _th.querySelector('button[id^="booking-details-button-"]') : null;
+            if (_tt) { _tt.click(); openGuestTabSoon(); }
+            return;
+          }
           var uhref = unl.getAttribute('data-rcz-href');
           if (uhref && forwardToPill(uhref)) openGuestTabSoon();  // ADD NAME / ADD PHOTO -> the member's Guest tab (same as the blue tier link)
           return;
