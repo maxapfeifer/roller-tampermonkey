@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Venue — ROLLER Check-in Cards + Member Photos
 // @namespace    venue.roller.checkin-cards
-// @version      5.75
+// @version      5.76
 // @description  Reformats the ROLLER POS booking check-in list into full-frame photo cards, surfaces member photos on load (no Verify click), alerts when a member has no photo, handles family memberships (best-effort photos + add-name prompt) and close/similar name matches.
 // @match        https://pos.roller.app/*
 // @match        https://*.roller.app/*
@@ -45,7 +45,7 @@
     DONE_STEP_BACK:   true,   // after "Done" on a child member page, step back past the parent page it pushes
     WARN_HEADING:     'WARNING: MISSING DATA!',                  // ACTION REQUIRED banner big heading
     WARN_SUB:         'COMPLETE PROFILE TO AVOID CANCELLATION',  // ACTION REQUIRED banner sub-line
-    MISMATCH_ACTREQ_HD: 'ACTION REQUIRED',                       // heading on the name-mismatch action box (no sub-line)
+    MISMATCH_ACTREQ_HD: 'WARNING: NAME MIS-MATCH',               // heading on the name-mismatch action box (no sub-line)
     // Age-type icons for casual/foster tiles (infant/child/adult), by ticket type. Populated with data:URIs
     // just below the CFG block (kept out of the literal so the base64 blobs don't clutter the config).
     AGE_ICONS:        {},
