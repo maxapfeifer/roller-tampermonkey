@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Venue — ROLLER Check-in Cards + Member Photos
 // @namespace    venue.roller.checkin-cards
-// @version      5.84
+// @version      5.85
 // @description  Reformats the ROLLER POS booking check-in list into full-frame photo cards, surfaces member photos on load (no Verify click), alerts when a member has no photo, handles family memberships (best-effort photos + add-name prompt) and close/similar name matches.
 // @match        https://pos.roller.app/*
 // @match        https://*.roller.app/*
@@ -797,6 +797,8 @@
       '.rcz-mmnames__val{color:#e5231b !important;margin-left:5px !important;}',
       'app-bip-summary:not(.rcz-skip) .summary__wrapper.rcz-mmnames-on .summary-detail__item--emphasis,app-bip-summary:not(.rcz-skip) .summary__wrapper.rcz-mmnames-on .summary-detail__item-holder-wrapper{display:none !important;}',
       '.rcz-memstrip{position:absolute !important;left:0 !important;right:0 !important;bottom:70px !important;z-index:5 !important;pointer-events:none !important;background:#1f2429 !important;color:#fff !important;font:800 12px/1 Roboto,Arial,sans-serif !important;letter-spacing:.06em !important;text-align:center !important;padding:7px 8px !important;}',
+      /* on a membership card the ADD PHOTO box sits ABOVE the "MEMBERSHIP: N USES" strip (which ends ~96px) */
+      'app-bip-summary.rcz-mem .summary__wrapper .rcz-actreq{bottom:106px !important;}',
       /* STATUS BAND — Name:/Photo: readout across the top of the tile (grey = fine, red = needs action) */
       '.rcz-status{position:absolute !important;top:0 !important;left:0 !important;right:0 !important;z-index:6 !important;pointer-events:none !important;background:rgba(255,255,255,.55) !important;-webkit-backdrop-filter:blur(6px) !important;backdrop-filter:blur(6px) !important;border-bottom:1px solid rgba(0,0,0,.07) !important;padding:8px 11px 5px 11px !important;font:400 12.5px/1.3 Roboto,Arial,sans-serif !important;color:#1f2933 !important;}',
       '.rcz-status__row{display:flex !important;gap:4px !important;align-items:center !important;}',
