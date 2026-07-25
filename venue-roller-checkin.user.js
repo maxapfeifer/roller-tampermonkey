@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Venue — ROLLER Check-in Cards + Member Photos
 // @namespace    venue.roller.checkin-cards
-// @version      5.71
+// @version      5.72
 // @description  Reformats the ROLLER POS booking check-in list into full-frame photo cards, surfaces member photos on load (no Verify click), alerts when a member has no photo, handles family memberships (best-effort photos + add-name prompt) and close/similar name matches.
 // @match        https://pos.roller.app/*
 // @match        https://*.roller.app/*
@@ -1044,7 +1044,7 @@
     var onPhoto = !!(w.querySelector('img.rcz-photo') || btn.querySelector('img.rcz-photo'));
     addMismatch(w, note, onPhoto);
     // ACTION box (same frosted style as the missing-data prompt) with the two ways to clear a mismatch
-    addActionReq(w, cardId, [{ label: 'ADD TICKET' }, { label: 'PASS NICKNAME' }], CFG.MISMATCH_ACTREQ_HD, '');
+    addActionReq(w, cardId, [{ label: 'ADD TICKET', kind: 'addticket' }, { label: 'PASS NICKNAME', kind: 'nickname' }], CFG.MISMATCH_ACTREQ_HD, '');
     clrAlert(w); clrCasual(w); clrVisiting(w); clrNote(w);
     if (tier) addBadge(w, tier, null); else clrBadge(w);
   }
@@ -1182,16 +1182,34 @@
   function addNameAct(w, cardId) {
     var el = w.querySelector('.rcz-nameact');
     if (!el) { el = document.createElement('div'); el.className = 'rcz-nameact'; w.appendChild(el); }
-    var links = '<a href="#" data-rcz-unlock="' + esc(cardId) + '">ADD TICKET</a>' +
-                '<a href="#" data-rcz-unlock="' + esc(cardId) + '">PASS NICKNAME</a>';
+    var links = '<a href="#" data-rcz-unlock="' + esc(cardId) + '" data-rcz-act="addticket">ADD TICKET</a>' +
+                '<a href="#" data-rcz-unlock="' + esc(cardId) + '" data-rcz-act="nickname">PASS NICKNAME</a>';
     var html = '<div class="rcz-actreq__hd">' + esc(CFG.MISMATCH_ACTREQ_HD) + '</div>' +
                '<div class="rcz-actreq__links">' + links + '</div>';
     if (el.getAttribute('data-h') !== html) { el.innerHTML = html; el.setAttribute('data-h', html); }
   }
   function clrNameAct(w) { var el = w.querySelector('.rcz-nameact'); if (el) el.remove(); }
+  // #2: snooze a card's prompts + shield for 2 minutes when staff acknowledge a name issue (ADD TICKET /
+  // PASS NICKNAME) or clear the visiting-photo handoff. When it lapses, a re-render restores prompt + lock.
+  function snoozed(cardId) { return !!(state.snooze && state.snooze[cardId] && state.snooze[cardId] > Date.now()); }
+  function snooze(cardId) {
+    if (!cardId) return;
+    if (!state.snooze) state.snooze = {};
+    state.snooze[cardId] = Date.now() + 120000;
+    setTimeout(function () { try { render(); } catch (e) {} }, 120200);
+  }
+  // Fire ROLLER's own "Add items" control (same as clicking the Add items link in the booking panel).
+  function clickAddItems() {
+    var els = document.querySelectorAll('button, a, [role="button"]');
+    for (var i = 0; i < els.length; i++) {
+      var t = (els[i].textContent || '').replace(/add_circle/gi, '').replace(/\s+/g, ' ').trim().toLowerCase();
+      if (t === 'add items') { els[i].click(); return true; }
+    }
+    return false;
+  }
   // #4: full-screen blocking handoff prompt, shown once when staff return to the booking screen after adding
   // a photo for a visiting-from-another-museum member. Cleared only by the CONFIRMED, DONE! button.
-  function showHandoffModal(id) {
+  function showHandoffModal(id, cardId) {
     if (document.getElementById('rcz-handoff-modal')) return;
     if (!document.getElementById('rcz-handoff-css')) {
       var css = document.createElement('style'); css.id = 'rcz-handoff-css';
@@ -1222,7 +1240,7 @@
       '</div>';
     document.body.appendChild(scrim);
     var b = scrim.querySelector('.rcz-ho-btn');
-    if (b) b.addEventListener('click', function () { scrim.remove(); });
+    if (b) b.addEventListener('click', function () { scrim.remove(); if (cardId) { snooze(cardId); try { render(); } catch (e) {} } });
   }
   // The two things a member card can require before check-in, as ACTION REQUIRED links (#6): ADD NAME (for a
   // family slot with no individual name) and/or ADD PHOTO (no photo on file). ADD NAME forwards to the Guest
@@ -1316,7 +1334,7 @@
       }
       injectStyle();
       // #4: back on the booking screen with a "ready" handoff for THIS booking -> fire the modal once
-      try { var _hb = (location.pathname.match(/\/bookings\/(\d+)/) || [])[1]; if (_hb && sessionStorage.getItem('rcz-handoff') === 'ready:' + _hb) { sessionStorage.removeItem('rcz-handoff'); showHandoffModal(_hb); } } catch (e) {}
+      try { var _hv = sessionStorage.getItem('rcz-handoff'), _hb = (location.pathname.match(/\/bookings\/(\d+)/) || [])[1]; if (_hv && _hb && _hv.indexOf('ready:' + _hb + ':') === 0) { var _hc = _hv.slice(('ready:' + _hb + ':').length); sessionStorage.removeItem('rcz-handoff'); showHandoffModal(_hb, _hc); } } catch (e) {}
       markSkips();
       ensureShields();
       shorten();
@@ -1371,7 +1389,7 @@
           var mem = '<b>' + esc((info.memberName || 'another member').toUpperCase()) + '</b>';
           var tk = esc(info.ticketName || 'this guest');
           var note = esc(CFG.MISMATCH_NOTE_TMPL).split('{MEMBER}').join(mem).split('{TICKET}').join(tk);
-          clrMismatch(w); addActionReq(w, cardId, [{ label: 'ADD TICKET' }, { label: 'PASS NICKNAME' }], CFG.MISMATCH_ACTREQ_HD, ''); clrAlert(w); clrCasual(w); clrVisiting(w); clrNote(w); if (info.tier) addBadge(w, info.tier, memHref(info, cardId), info.visiting); else clrBadge(w);
+          clrMismatch(w); addActionReq(w, cardId, [{ label: 'ADD TICKET', kind: 'addticket' }, { label: 'PASS NICKNAME', kind: 'nickname' }], CFG.MISMATCH_ACTREQ_HD, ''); clrAlert(w); clrCasual(w); clrVisiting(w); clrNote(w); if (info.tier) addBadge(w, info.tier, memHref(info, cardId), info.visiting); else clrBadge(w);
         } else if (info && !info.pending && info.visiting) {
           // visiting overlay dropped from the redesign — a visiting member with no photo is treated
           // like any other no-photo member (standard "requires photo" alert), no "visiting" banner.
@@ -1444,7 +1462,8 @@
         else if (info && !info.pending && info.member === false && !info.misaligned) paintStatusEmpty(w); // casual/foster: blank band for tile consistency
         else clrStatus(w);
         if (!state.unlocked) state.unlocked = {};
-        w.classList.toggle('rcz-locked', needsAction(w, info) && !state.unlocked[cardId]);
+        if (snoozed(cardId)) { clrActionReq(w); clrNameAct(w); clrMismatch(w); }   // #2: 2-min acknowledge -> hide prompts
+        w.classList.toggle('rcz-locked', needsAction(w, info) && !state.unlocked[cardId] && !snoozed(cardId));
         var bm = state.birthdays[cardId];
         if (CFG.SHOW_BIRTHDAY && bm && birthdayInWindow(bm)) {
           addBirthday(w, bm);
@@ -1538,6 +1557,15 @@
           ev.preventDefault(); ev.stopImmediatePropagation();
           var uid = unl.getAttribute('data-rcz-unlock');
           if (!state.unlocked) state.unlocked = {};
+          var _act = unl.getAttribute('data-rcz-act');
+          // #2: ADD TICKET / PASS NICKNAME -> temporary 2-min snooze (hide the prompt + unlock the shield),
+          // not a permanent unlock. ADD TICKET also fires ROLLER's own "Add items" flow.
+          if (_act === 'addticket' || _act === 'nickname') {
+            if (_act === 'addticket') clickAddItems();
+            if (uid) snooze(uid);
+            render();
+            return;
+          }
           if (uid) state.unlocked[uid] = true;
           var uhost = unl.closest ? unl.closest('.summary__wrapper') : null;
           if (uhost) uhost.classList.remove('rcz-locked');
@@ -1545,7 +1573,7 @@
           // membership), and arms the "text the admin team" handoff modal for when staff return here.
           if (unl.getAttribute('data-rcz-ticket')) {
             var _bid = (location.pathname.match(/\/bookings\/(\d+)/) || [])[1];
-            if (_bid) { try { sessionStorage.setItem('rcz-handoff', 'armed:' + _bid); } catch (e) {} }
+            if (_bid) { try { sessionStorage.setItem('rcz-handoff', 'armed:' + _bid + ':' + uid); } catch (e) {} }
             var _th = unl.closest ? unl.closest('app-bip-summary') : null;
             var _tt = _th ? _th.querySelector('button[id^="booking-details-button-"]') : null;
             if (_tt) { _tt.click(); openGuestTabSoon(); }
