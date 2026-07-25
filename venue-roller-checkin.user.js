@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Venue — ROLLER Check-in Cards + Member Photos
 // @namespace    venue.roller.checkin-cards
-// @version      5.73
+// @version      5.74
 // @description  Reformats the ROLLER POS booking check-in list into full-frame photo cards, surfaces member photos on load (no Verify click), alerts when a member has no photo, handles family memberships (best-effort photos + add-name prompt) and close/similar name matches.
 // @match        https://pos.roller.app/*
 // @match        https://*.roller.app/*
@@ -1649,6 +1649,10 @@
     installBadgeLinkNav();
     render();
     var obs = new MutationObserver(function () {
+      // Off the booking route (e.g. the membership photo page), strip our stylesheet IMMEDIATELY — a busy
+      // page's continuous mutations can otherwise keep pushing back the debounced render() so its teardown
+      // never fires, leaving #rcz-style applied and reformatting ROLLER's native card. (Fixes the ~20% bug.)
+      if (!activeRoute()) { var _st = document.getElementById('rcz-style'); if (_st) _st.remove(); }
       clearTimeout(window.__rczT);
       window.__rczT = setTimeout(render, 60);
     });
