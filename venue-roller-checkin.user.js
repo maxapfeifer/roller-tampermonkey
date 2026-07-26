@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Venue — ROLLER Check-in Cards + Member Photos
 // @namespace    venue.roller.checkin-cards
-// @version      5.87
+// @version      5.88
 // @description  Reformats the ROLLER POS booking check-in list into full-frame photo cards, surfaces member photos on load (no Verify click), alerts when a member has no photo, handles family memberships (best-effort photos + add-name prompt) and close/similar name matches.
 // @match        https://pos.roller.app/*
 // @match        https://*.roller.app/*
@@ -415,9 +415,13 @@
       // (every real membership is already claimed by its true member) -> it's a CASUAL riding along, not a name
       // mismatch. The linking pass above has already flagged the true member's card, so demote the rider to a
       // plain casual now. Genuine fraud always keeps a real discount record, so it is never "unmapped".
+      var _riders = {};
       Object.keys(next).forEach(function (cid) {
-        if (next[cid] && next[cid].unmapped) next[cid] = { member: false, pending: false, photo: null };
+        if (next[cid] && next[cid].unmapped) { next[cid] = { member: false, pending: false, photo: null }; _riders[cid] = true; }
       });
+      // don't fetch a membership photo for a demoted rider — the fetch would re-set member=true and paint the
+      // member's photo on what should be a plain casual tile.
+      toFetch = toFetch.filter(function (t) { return !_riders[t.cardId]; });
       state.byCard = next;
       render();
       toFetch.forEach(fetchMembership);
