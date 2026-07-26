@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Venue — ROLLER Check-in Cards + Member Photos
 // @namespace    venue.roller.checkin-cards
-// @version      5.86
+// @version      5.87
 // @description  Reformats the ROLLER POS booking check-in list into full-frame photo cards, surfaces member photos on load (no Verify click), alerts when a member has no photo, handles family memberships (best-effort photos + add-name prompt) and close/similar name matches.
 // @match        https://pos.roller.app/*
 // @match        https://*.roller.app/*
@@ -410,6 +410,13 @@
         });
         // only flag the mismatch tile when its paired "paid full price" member is actually on this booking
         if (linked) e.misaligned = true;
+      });
+      // An "unmapped" ticket carries a mis-distributed discount AMOUNT but has no membership record of its own
+      // (every real membership is already claimed by its true member) -> it's a CASUAL riding along, not a name
+      // mismatch. The linking pass above has already flagged the true member's card, so demote the rider to a
+      // plain casual now. Genuine fraud always keeps a real discount record, so it is never "unmapped".
+      Object.keys(next).forEach(function (cid) {
+        if (next[cid] && next[cid].unmapped) next[cid] = { member: false, pending: false, photo: null };
       });
       state.byCard = next;
       render();
@@ -1042,6 +1049,7 @@
       if (i2 && i2.member) { var n2 = firstName(holderNameFor(w2, c2)); if (n2) ticketFirsts.push(n2); }
     });
     var unclaimed = pillFirsts.filter(function (pf) { return ticketFirsts.indexOf(pf) < 0; });
+    if (!unclaimed.length) return null;   // every membership is claimed by a matching guest -> this ticket is a rider, not an interloper
     return { memberName: unclaimed.length === 1 ? proper(unclaimed[0]) : '', ticketName: proper(nm) };
   }
   // render a card as a name-mismatch (red overlay) while KEEPING the member photo behind it, if present
