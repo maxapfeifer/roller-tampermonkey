@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Venue — ROLLER Check-in Cards + Member Photos
 // @namespace    venue.roller.checkin-cards
-// @version      5.85
+// @version      5.86
 // @description  Reformats the ROLLER POS booking check-in list into full-frame photo cards, surfaces member photos on load (no Verify click), alerts when a member has no photo, handles family memberships (best-effort photos + add-name prompt) and close/similar name matches.
 // @match        https://pos.roller.app/*
 // @match        https://*.roller.app/*
@@ -1394,7 +1394,7 @@
           var url = CFG.CDN + info.photo;
           if (img.getAttribute('src') !== url) img.setAttribute('src', url);
           // guard: if the ticket-holder isn't a named member on the membership, flag it (keep the photo behind)
-          var pm = (info.family || info.closematch) ? null : pillMismatchCheck(w, cardId);
+          var pm = (info.family || info.closematch || info.misaligned || info.paidMember) ? null : pillMismatchCheck(w, cardId);
           if (pm) {
             showMismatch(w, btn, icon, img, cardId, pm.memberName, pm.ticketName, info.tier);
           } else {
@@ -1442,7 +1442,7 @@
             if (!img) { img = document.createElement('img'); img.className = 'rcz-photo'; img.alt = ''; btn.appendChild(img); }
             var nsrc = np.getAttribute('src');
             if (img.getAttribute('src') !== nsrc) img.setAttribute('src', nsrc);
-            var pmn = (info.family || info.closematch) ? null : pillMismatchCheck(w, cardId);
+            var pmn = (info.family || info.closematch || info.misaligned || info.paidMember) ? null : pillMismatchCheck(w, cardId);
             if (pmn) {
               showMismatch(w, btn, icon, img, cardId, pmn.memberName, pmn.ticketName, info.tier);
             } else {
