@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Venue — ROLLER Check-in Cards + Member Photos
 // @namespace    venue.roller.checkin-cards
-// @version      5.95
+// @version      5.96
 // @description  Reformats the ROLLER POS booking check-in list into full-frame photo cards, surfaces member photos on load (no Verify click), alerts when a member has no photo, handles family memberships (best-effort photos + add-name prompt) and close/similar name matches.
 // @match        https://pos.roller.app/*
 // @match        https://*.roller.app/*
@@ -723,7 +723,7 @@
       /* select checkbox hidden in the new design */
       /* stock select checkbox, TOP-LEFT of every card. Material wraps the visible 18px box in a 40px target
          (box centred, +11px), which threw the alignment off — so shrink the wrapper/target to the box itself. */
-      'app-bip-summary:not(.rcz-skip) .summary__wrapper mat-checkbox.align-top--checkbox{position:absolute !important;top:9px !important;left:11px !important;width:18px !important;height:18px !important;z-index:7 !important;margin:0 !important;pointer-events:auto !important;}',
+      'app-bip-summary:not(.rcz-skip) .summary__wrapper mat-checkbox.align-top--checkbox{position:absolute !important;top:14px !important;left:11px !important;width:18px !important;height:18px !important;z-index:7 !important;margin:0 !important;pointer-events:auto !important;}',
       'app-bip-summary:not(.rcz-skip) .summary__wrapper mat-checkbox.align-top--checkbox .mdc-checkbox{width:18px !important;height:18px !important;padding:0 !important;flex:0 0 18px !important;}',
       'app-bip-summary:not(.rcz-skip) .summary__wrapper mat-checkbox.align-top--checkbox .mat-mdc-checkbox-touch-target{width:18px !important;height:18px !important;top:0 !important;left:0 !important;transform:none !important;}',
       'app-bip-summary:not(.rcz-skip) .summary__wrapper mat-checkbox.align-top--checkbox .mdc-checkbox__background{top:0 !important;left:0 !important;}',
