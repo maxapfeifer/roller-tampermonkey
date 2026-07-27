@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Venue — ROLLER Check-in Cards + Member Photos
 // @namespace    venue.roller.checkin-cards
-// @version      5.98
+// @version      5.99
 // @description  Reformats the ROLLER POS booking check-in list into full-frame photo cards, surfaces member photos on load (no Verify click), alerts when a member has no photo, handles family memberships (best-effort photos + add-name prompt) and close/similar name matches.
 // @match        https://pos.roller.app/*
 // @match        https://*.roller.app/*
@@ -1954,9 +1954,16 @@
   // Always-on style (not gated to the check-in route) — used to hide ROLLER's "Redeem membership" button
   // everywhere it appears (per request). The :has() rule also drops its now-empty wrapper.
   function injectGlobalStyle() {
-    if (!CFG.HIDE_REDEEM || document.getElementById('rcz-global') || !document.head) return;
+    if (document.getElementById('rcz-global') || !document.head) return;
+    var rules = [
+      // Staff never want these ROLLER controls — hide on every screen:
+      // the Select all / Hide checked-in header bar, and the "verify membership discount" banner.
+      'app-bip-list-header,#select-all-checkbox,#hide-checked-in-checkbox{display:none !important;}',
+      '#booking-membership-verification-banner{display:none !important;}'
+    ];
+    if (CFG.HIDE_REDEEM) rules.push('#redeem-membership-button,app-generic-button:has(#redeem-membership-button){display:none !important;}');
     var s = document.createElement('style'); s.id = 'rcz-global';
-    s.textContent = '#redeem-membership-button,app-generic-button:has(#redeem-membership-button){display:none !important;}';
+    s.textContent = rules.join('');
     document.head.appendChild(s);
   }
   // The CSS above catches the Redeem button when it carries its id; on some membership states ROLLER renders
