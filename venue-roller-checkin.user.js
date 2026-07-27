@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Venue — ROLLER Check-in Cards + Member Photos
 // @namespace    venue.roller.checkin-cards
-// @version      5.92
+// @version      5.93
 // @description  Reformats the ROLLER POS booking check-in list into full-frame photo cards, surfaces member photos on load (no Verify click), alerts when a member has no photo, handles family memberships (best-effort photos + add-name prompt) and close/similar name matches.
 // @match        https://pos.roller.app/*
 // @match        https://*.roller.app/*
@@ -721,7 +721,8 @@
 
       /* overlays ON TOP of the photo */
       /* select checkbox hidden in the new design */
-      'app-bip-summary:not(.rcz-skip) .summary__wrapper mat-checkbox.align-top--checkbox{display:none !important;}',
+      /* stock select checkbox: bring it back in the TOP-LEFT of every card (status text is bumped right to clear it) */
+      'app-bip-summary:not(.rcz-skip) .summary__wrapper mat-checkbox.align-top--checkbox{position:absolute !important;top:6px !important;left:9px !important;z-index:7 !important;margin:0 !important;pointer-events:auto !important;}',
       'app-bip-summary:not(.rcz-skip) .summary__wrapper .summary-detail{position:absolute !important;right:76px !important;left:auto !important;bottom:12px !important;flex:none !important;width:auto !important;max-width:44% !important;background:none !important;border:none !important;border-radius:0 !important;padding:0 !important;box-shadow:none !important;z-index:6 !important;text-align:right !important;}',
       'app-bip-summary:not(.rcz-skip) .summary-detail p.summary-detail__item:not(.summary-detail__item--emphasis){display:none !important;}',
       /* category ("Adult"/"Child"/"Infant") smaller; name ("Erin") larger, bold. Type text is BLACK. */
@@ -843,7 +844,7 @@
       /* on a membership card the ADD PHOTO box sits ABOVE the "MEMBERSHIP: N USES" strip (which ends ~96px) */
       'app-bip-summary.rcz-mem .summary__wrapper .rcz-actreq{bottom:106px !important;}',
       /* STATUS BAND — Name:/Photo: readout across the top of the tile (grey = fine, red = needs action) */
-      '.rcz-status{position:absolute !important;top:0 !important;left:0 !important;right:0 !important;z-index:6 !important;pointer-events:none !important;background:rgba(255,255,255,.55) !important;-webkit-backdrop-filter:blur(6px) !important;backdrop-filter:blur(6px) !important;border-bottom:1px solid rgba(0,0,0,.07) !important;padding:8px 11px 5px 11px !important;font:400 12.5px/1.3 Roboto,Arial,sans-serif !important;color:#1f2933 !important;}',
+      '.rcz-status{position:absolute !important;top:0 !important;left:0 !important;right:0 !important;z-index:6 !important;pointer-events:none !important;background:rgba(255,255,255,.55) !important;-webkit-backdrop-filter:blur(6px) !important;backdrop-filter:blur(6px) !important;border-bottom:1px solid rgba(0,0,0,.07) !important;padding:8px 11px 5px 40px !important;font:400 12.5px/1.3 Roboto,Arial,sans-serif !important;color:#1f2933 !important;}',
       '.rcz-status__row{display:flex !important;gap:4px !important;align-items:center !important;}',
       '.rcz-status__lbl{color:#1f2933 !important;}',
       '.rcz-status__ok{color:#1f2933 !important;}',
@@ -1621,7 +1622,9 @@
     function stop() { if (iv) { clearInterval(iv); iv = null; } document.removeEventListener('pointerdown', onUser, true); }
     // As soon as staff touch the screen (open the capture, hit Done, switch tab), back off completely — our
     // auto-switch must NEVER keep re-clicking the Guest tab and cancel the interaction they just started.
-    function onUser() { stop(); }
+    // Get out of the user's way ONLY once the Guest tab is actually open; before that keep trying to reach it
+    // (an unprocessed-membership item detail defaults to the Membership tab, so we must persist to switch).
+    function onUser() { var g0 = document.getElementById('bip-detail-tab-customer'); if (g0 && g0.getAttribute('aria-selected') === 'true') stop(); }
     document.addEventListener('pointerdown', onUser, true);
     iv = setInterval(function () {
       try {
@@ -1630,7 +1633,7 @@
           if (g.getAttribute('aria-selected') === 'true') { stop(); return; } // tab already open -> done
           g.click();
         }
-        if (Date.now() - start > 2500) stop(); // give up after ~2.5s
+        if (Date.now() - start > 4000) stop(); // give up after ~4s
       } catch (e) { stop(); }
     }, 120);
   }
