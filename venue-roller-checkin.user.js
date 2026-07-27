@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Venue — ROLLER Check-in Cards + Member Photos
 // @namespace    venue.roller.checkin-cards
-// @version      5.91
+// @version      5.92
 // @description  Reformats the ROLLER POS booking check-in list into full-frame photo cards, surfaces member photos on load (no Verify click), alerts when a member has no photo, handles family memberships (best-effort photos + add-name prompt) and close/similar name matches.
 // @match        https://pos.roller.app/*
 // @match        https://*.roller.app/*
@@ -256,6 +256,31 @@
     var s = a.length < b.length ? a : b, l = a.length < b.length ? b : a;
     return s.length >= 3 && l.indexOf(s) === 0;
   }
+  // Levenshtein edit distance — used sparingly (see sameName) to catch single-letter misspellings.
+  function editDistance(a, b) {
+    var m = a.length, n = b.length, i, j, prev = [], cur = [];
+    for (j = 0; j <= n; j++) prev[j] = j;
+    for (i = 1; i <= m; i++) {
+      cur[0] = i;
+      for (j = 1; j <= n; j++) cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a.charAt(i - 1) === b.charAt(j - 1) ? 0 : 1));
+      for (j = 0; j <= n; j++) prev[j] = cur[j];
+    }
+    return prev[n];
+  }
+  // Same person, allowing common alternative spellings / nicknames — so a MIS-SPELLING is never flagged as
+  // fraud. TRUE when: identical; OR the shorter is the leading stub of the longer (Jo/Joh, Flyn/Flynn,
+  // Flyn/Flynny, Aliya/Aliyah — min 2 chars); OR a single-letter difference on a name long enough (>=4) that a
+  // one-char change reads as a typo, not a different short name (Alyah/Aliyah, Catherine/Katherine — but NOT
+  // Tom/Tim, Dan/Don, which stay genuinely different). Case-insensitive.
+  function sameName(a, b) {
+    a = normName(a); b = normName(b);
+    if (!a || !b) return false;
+    if (a === b) return true;
+    var s = a.length <= b.length ? a : b, l = a.length <= b.length ? b : a;
+    if (s.length >= 2 && l.indexOf(s) === 0) return true;
+    if (s.length >= 4 && editDistance(a, b) <= 1) return true;
+    return false;
+  }
   var MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
   function monthName(m) { return (m >= 1 && m <= 12) ? MONTHS[m - 1] : ''; }
   // birthday month falls in the last / current / next calendar month
@@ -357,8 +382,7 @@
         var tier = (d.pct === 100) ? 'gold' : 'wonder';
         state.discountIndex[d.b] = { cardId: cardId };
         var fnM = firstName(mn), fnT = firstName(p.name);
-        var exact = fnM && fnM === fnT;
-        var close = !exact && closeName(fnM, fnT);
+        var same = sameName(fnM, fnT);   // exact OR a spelling/nickname variant -> the same person, no warning
         if (visiting) {
           // member visiting from another museum -> fetch photo (photo essential)
           next[cardId] = { member: true, pending: true, photo: null, visiting: true, tier: tier };
@@ -370,13 +394,10 @@
           // on a "Tori Allen" slot that is actually blank) STILL gets the "Add individual names" prompt.
           next[cardId] = { member: true, pending: true, photo: null, family: true, tier: tier };
           toFetch.push({ cardId: cardId, r: d.r, b: d.b });
-        } else if (exact) {
-          // name matches a genuinely-named membership slot -> just the photo, no prompt.
+        } else if (same) {
+          // same person — exact match OR a spelling/nickname variant (Jo/Joh, Aliya/Aliyah, Flyn/Flynn) ->
+          // just the photo, NO warning. Only a genuinely different name reaches the mismatch branch below.
           next[cardId] = { member: true, pending: true, photo: null, tier: tier };
-          toFetch.push({ cardId: cardId, r: d.r, b: d.b });
-        } else if (close) {
-          // similar/variant name (Jax vs Jaxson) -> show photo, prompt to confirm/override the name
-          next[cardId] = { member: true, pending: true, photo: null, closematch: true, memberName: proper(fnM), ticketName: proper(fnT), tier: tier };
           toFetch.push({ cardId: cardId, r: d.r, b: d.b });
         } else if (!fnT) {
           // ticket has NO holder name (e.g. a front-desk / walk-up sale where the attendee's name was never
@@ -1064,7 +1085,7 @@
     var nm = firstName(holderNameFor(w, cardId));
     if (!nm) return null;                          // no name to compare -> leave alone
     if (pillFirsts.indexOf(nm) >= 0) return null;  // ticket-holder IS a named member -> fine
-    for (var i = 0; i < pillFirsts.length; i++) if (closeName(pillFirsts[i], nm)) return null; // close variant -> handled elsewhere
+    for (var i = 0; i < pillFirsts.length; i++) if (sameName(pillFirsts[i], nm)) return null; // spelling/nickname variant of a member -> same person, not an interloper
     // genuine interloper. Find the single membership name not claimed by any ticket, so we can name it.
     var ticketFirsts = [];
     document.querySelectorAll('app-bip-summary:not(.rcz-skip) .summary__wrapper').forEach(function (w2) {
