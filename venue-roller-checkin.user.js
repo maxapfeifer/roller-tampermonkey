@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Venue — ROLLER Check-in Cards + Member Photos
 // @namespace    venue.roller.checkin-cards
-// @version      5.94
+// @version      5.95
 // @description  Reformats the ROLLER POS booking check-in list into full-frame photo cards, surfaces member photos on load (no Verify click), alerts when a member has no photo, handles family memberships (best-effort photos + add-name prompt) and close/similar name matches.
 // @match        https://pos.roller.app/*
 // @match        https://*.roller.app/*
@@ -1391,7 +1391,10 @@
         if (img.getAttribute('src') !== src) img.setAttribute('src', src);
       }
     }
-    clrAlert(w); clrCasual(w); clrMismatch(w); clrVisiting(w); clrNote(w); clrActionReq(w);
+    clrAlert(w); clrCasual(w); clrMismatch(w); clrVisiting(w); clrNote(w);
+    // NB: do NOT clrActionReq here — that would destroy the ADD PHOTO box (and its <a>) on every
+    // render (~7x/s), so a human finger-tap spanning a re-render gets its click cancelled. Let the
+    // idempotent addActionReq below reuse the existing box; only clear it when a photo now exists.
     var info = membershipInfo(host);
     ensureBotBar(w);
     var mHasPhoto = !!w.querySelector('img.rcz-photo');
@@ -1402,6 +1405,7 @@
     // FRAUD WARNING / ADD PHOTO on a membership-search card that has no photo (same as the booking tiles)
     var _mpc = btn ? btn.id.replace('booking-details-button-', '') : null;
     if (!mHasPhoto && _mpc) addActionReq(w, _mpc, [{ label: 'ADD PHOTO', kind: 'photo', photonav: true }]);
+    else clrActionReq(w);
     var oldPanel = w.querySelector('.rcz-mem-info'); if (oldPanel) oldPanel.remove();  // drop old Starts/Ends panel
     // Birthday flag — top-right, same as ticket cards
     var memCardId = btn ? btn.id.replace('booking-details-button-', '') : null;
