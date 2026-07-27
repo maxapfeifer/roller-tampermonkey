@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Venue — ROLLER Check-in Cards + Member Photos
 // @namespace    venue.roller.checkin-cards
-// @version      5.96
+// @version      5.97
 // @description  Reformats the ROLLER POS booking check-in list into full-frame photo cards, surfaces member photos on load (no Verify click), alerts when a member has no photo, handles family memberships (best-effort photos + add-name prompt) and close/similar name matches.
 // @match        https://pos.roller.app/*
 // @match        https://*.roller.app/*
@@ -726,7 +726,7 @@
       'app-bip-summary:not(.rcz-skip) .summary__wrapper mat-checkbox.align-top--checkbox{position:absolute !important;top:14px !important;left:11px !important;width:18px !important;height:18px !important;z-index:7 !important;margin:0 !important;pointer-events:auto !important;}',
       'app-bip-summary:not(.rcz-skip) .summary__wrapper mat-checkbox.align-top--checkbox .mdc-checkbox{width:18px !important;height:18px !important;padding:0 !important;flex:0 0 18px !important;}',
       'app-bip-summary:not(.rcz-skip) .summary__wrapper mat-checkbox.align-top--checkbox .mat-mdc-checkbox-touch-target{width:18px !important;height:18px !important;top:0 !important;left:0 !important;transform:none !important;}',
-      'app-bip-summary:not(.rcz-skip) .summary__wrapper mat-checkbox.align-top--checkbox .mdc-checkbox__background{top:0 !important;left:0 !important;}',
+      'app-bip-summary:not(.rcz-skip) .summary__wrapper mat-checkbox.align-top--checkbox .mdc-checkbox__background{top:0 !important;left:0 !important;border-radius:50% !important;overflow:hidden !important;}',
       'app-bip-summary:not(.rcz-skip) .summary__wrapper mat-checkbox.align-top--checkbox .mdc-checkbox__native-control{width:18px !important;height:18px !important;top:0 !important;left:0 !important;}',
       'app-bip-summary:not(.rcz-skip) .summary__wrapper .summary-detail{position:absolute !important;right:76px !important;left:auto !important;bottom:12px !important;flex:none !important;width:auto !important;max-width:44% !important;background:none !important;border:none !important;border-radius:0 !important;padding:0 !important;box-shadow:none !important;z-index:6 !important;text-align:right !important;}',
       'app-bip-summary:not(.rcz-skip) .summary-detail p.summary-detail__item:not(.summary-detail__item--emphasis){display:none !important;}',
