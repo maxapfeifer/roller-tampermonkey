@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Venue — ROLLER Check-in Cards + Member Photos
 // @namespace    venue.roller.checkin-cards
-// @version      5.88
+// @version      5.89
 // @description  Reformats the ROLLER POS booking check-in list into full-frame photo cards, surfaces member photos on load (no Verify click), alerts when a member has no photo, handles family memberships (best-effort photos + add-name prompt) and close/similar name matches.
 // @match        https://pos.roller.app/*
 // @match        https://*.roller.app/*
@@ -43,6 +43,7 @@
     FOSTER_LABEL:     'Foster CARE Ticket',
     HIDE_REDEEM:      true,   // hide ROLLER's "Redeem membership" button everywhere
     DONE_STEP_BACK:   true,   // after "Done" on a child member page, step back past the parent page it pushes
+    FLAG_MISASSIGNED: false,  // OFF: a discount mis-assignment where the real member IS on the booking shows nothing (normal member). Set true to restore the "MEMBERSHIP DISCOUNT MIS-ASSIGNED" reassurance note.
     WARN_HEADING:     'FRAUD WARNING: MISSING DATA',             // ACTION REQUIRED banner big heading
     WARN_SUB:         'COMPLETE PROFILE TO AVOID CANCELLATION',  // ACTION REQUIRED banner sub-line
     MISMATCH_ACTREQ_HD: "FRAUD WARNING: NAME ON MEMBERSHIP DOESN'T MATCH NAME ON TICKET", // heading on the name-mismatch action box (no sub-line)
@@ -398,19 +399,24 @@
       // only one discount record per membership, so the booking TOTAL is correct. Flag the real member's
       // card with a reassurance banner and point it at the guest who received the discount. Classification
       // based (no dollar-field guessing), so it works regardless of how ROLLER stores the discount amount.
-      Object.keys(next).forEach(function (cid) {
-        var e = next[cid];
-        if (!(e && e.unmapped && e.memberFull)) return;
-        var key = normName(e.memberFull), linked = false;
-        Object.keys(next).forEach(function (cid2) {
-          var m = next[cid2];
-          if (m && m.member && !m.mismatch && m.memberFull && normName(m.memberFull) === key) {
-            m.paidMember = true; m.recipPart = cid; linked = true;
-          }
+      // Gated OFF for now (CFG.FLAG_MISASSIGNED): a pure assignment error where the real member IS on the
+      // booking is treated as a normal member — no reassurance note, no "assignment error only" status. Code
+      // kept so we can switch it back on. (The rider still demotes to a plain casual below, flag or not.)
+      if (CFG.FLAG_MISASSIGNED) {
+        Object.keys(next).forEach(function (cid) {
+          var e = next[cid];
+          if (!(e && e.unmapped && e.memberFull)) return;
+          var key = normName(e.memberFull), linked = false;
+          Object.keys(next).forEach(function (cid2) {
+            var m = next[cid2];
+            if (m && m.member && !m.mismatch && m.memberFull && normName(m.memberFull) === key) {
+              m.paidMember = true; m.recipPart = cid; linked = true;
+            }
+          });
+          // only flag the mismatch tile when its paired "paid full price" member is actually on this booking
+          if (linked) e.misaligned = true;
         });
-        // only flag the mismatch tile when its paired "paid full price" member is actually on this booking
-        if (linked) e.misaligned = true;
-      });
+      }
       // An "unmapped" ticket carries a mis-distributed discount AMOUNT but has no membership record of its own
       // (every real membership is already claimed by its true member) -> it's a CASUAL riding along, not a name
       // mismatch. The linking pass above has already flagged the true member's card, so demote the rider to a
