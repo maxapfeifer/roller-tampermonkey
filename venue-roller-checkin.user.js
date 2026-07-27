@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Venue — ROLLER Check-in Cards + Member Photos
 // @namespace    venue.roller.checkin-cards
-// @version      5.89
+// @version      5.90
 // @description  Reformats the ROLLER POS booking check-in list into full-frame photo cards, surfaces member photos on load (no Verify click), alerts when a member has no photo, handles family memberships (best-effort photos + add-name prompt) and close/similar name matches.
 // @match        https://pos.roller.app/*
 // @match        https://*.roller.app/*
@@ -90,6 +90,11 @@
     SHOW_SHIELD:       true,  // reshape the check-in button into an I.D. shield: amber "I.D." -> green tick
     SHIELD_LABEL:      'Confirm',
     SHIELD_SUB:        'I.D.',   // shield reads "Confirm" (small top) over "I.D." (big bottom)
+    // Tapping a shield that is ALREADY ticked runs ROLLER's own "Undo check-in" (see the UNDO CHECK-IN
+    // section further down for how that works). Setting this false hands the tap back to ROLLER's raw
+    // button — which on a membership RE-CHECKS THEM IN instead of undoing, so only turn it off when
+    // deliberately comparing against stock behaviour.
+    UNDO_CHECKIN:      true,
     // ---- membership search results ----
     SHOW_MEMBERSHIP:   true,  // format membership results (photo + "Membership Found" panel). false = leave as ROLLER draws them
     MEM_TITLE:         'Membership Found',
@@ -830,6 +835,11 @@
       '.rcz-note{top:47px !important;}',
       /* LOCKED shield — dim + block the check-in button until staff action a prompt */
       'app-bip-summary:not(.rcz-skip) .summary__wrapper.rcz-locked button[id^="check-in-button"]{pointer-events:none !important;opacity:.34 !important;filter:grayscale(.7) !important;}',
+      /* UNDO CHECK-IN — while we drive ROLLER's own actions menu (open it, pick "Undo check-in"), keep the
+         menu + its backdrop off screen so staff see one tap go straight to ROLLER's confirm modal instead
+         of a menu flashing open and shut. Cleared the moment the option is clicked. */
+      'body.rcz-undoing .cdk-overlay-container .mat-mdc-menu-panel,body.rcz-undoing .cdk-overlay-container .mat-menu-panel{opacity:0 !important;}',
+      'body.rcz-undoing .cdk-overlay-backdrop{opacity:0 !important;}',
       /* ACTION REQUIRED prompt — frosted banner with tappable links */
       /* Box spans (near) the full tile width and is a query container, so the three lines can size
          themselves to the tile (min(cap, N cqw)) and always land on ONE line — no wrap, less grey hidden.
@@ -1603,6 +1613,193 @@
     try { history.back(); } catch (e) { return; }
     setTimeout(function () { if (location.pathname !== before) backOutOfMemberships(steps + 1); }, 320);
   }
+
+  /* ======================================================================
+     UNDO CHECK-IN — tapping a shield that's already ticked
+     ----------------------------------------------------------------------
+     How ROLLER's own undo works (read out of the POS bundle at
+     pos.roller.app, July 2026):
+
+       • It is gated on a DEVICE setting, "Allow users to undo check-ins":
+             canUndoCheckIn(bip) = deviceSettings.allowUndoCheckins
+                                   && bip.allowsCheckingIn && bip.isUsed
+         With that setting off there is no undo anywhere in the product.
+
+       • The explicit control is a MULTI-SELECT action, not a per-ticket one:
+         tick a ticket's checkbox -> the list header grows a "more actions"
+         dropdown (#dropdown-more-actions) -> "Undo check-in (N)"
+         (#dropdown-option-undo, rendered only when EVERY selected ticket can
+         be undone) -> confirm modal "Undo check-in? / Yes, undo" ->
+         bookingService.logAttendance(bips, false).
+
+       • The per-ticket check button is a toggle, but only sometimes:
+             checkIn() { n = (session && pass && pass.maxUses !== 1)
+                               ? true            // <- always a CHECK-IN
+                               : !isCheckedIn;   // <- toggles, so undoes
+                         booking().setCheckedIn(n, [bip]); }
+         On an ordinary ticket the second tap undoes. On a MULTI-USE PASS —
+         which is every membership — n is forced true, so a second tap
+         re-checks them in and logs a SECOND attendance. That's the trap our
+         green shield was sitting on, and it would quietly inflate member
+         check-in counts.
+
+     So a ticked shield drives ROLLER's multi-select undo: same code path,
+     same permission gate, same confirm modal — just started from one tap
+     instead of checkbox + menu (our skin hides the checkbox). We do it for
+     every ticket type rather than only members: one path is easier to reason
+     about, and it removes any chance of the toggle firing a duplicate
+     check-in on a pass we failed to recognise as one.
+
+     If the native machinery can't be found we stop and say so — we never
+     fall through to the raw button, because on a membership that silently
+     double-counts the visit instead of undoing it.
+     ====================================================================== */
+  var undoBusy = false;   // one undo flow at a time; a second tap mid-flow is ignored
+
+  // Transient message, bottom-centre. Only used when an undo CAN'T be completed — staff must never be
+  // left with a tap that appears to do nothing.
+  function undoToast(msg, ms) {
+    var old = document.getElementById('rcz-toast'); if (old) old.remove();
+    var t = document.createElement('div'); t.id = 'rcz-toast';
+    t.style.cssText = 'position:fixed;left:50%;bottom:28px;transform:translateX(-50%);z-index:2147483000;' +
+      'max-width:min(620px,92vw);background:#1c222b;color:#fff;font:600 15px/1.45 Roboto,Arial,sans-serif;' +
+      'padding:15px 22px;border-radius:13px;box-shadow:0 10px 34px rgba(0,0,0,.42);text-align:center;';
+    t.textContent = msg;
+    document.body.appendChild(t);
+    setTimeout(function () { if (t.parentNode) t.remove(); }, ms || 7000);
+  }
+  // Poll for something ROLLER renders asynchronously; get() stays falsy until it's there.
+  function pollFor(get, timeoutMs, done) {
+    var start = Date.now();
+    var iv = setInterval(function () {
+      var v = null; try { v = get(); } catch (e) {}
+      if (v) { clearInterval(iv); done(v); return; }
+      if (Date.now() - start > timeoutMs) { clearInterval(iv); done(null); }
+    }, 80);
+  }
+  // ROLLER renders the actions dropdown more than once (wide / narrow layouts) under the same id, so
+  // getElementById isn't enough — take the copy actually on screen.
+  function firstVisible(nodes) {
+    for (var i = 0; i < nodes.length; i++) {
+      if (nodes[i].offsetParent !== null || nodes[i].getClientRects().length) return nodes[i];
+    }
+    return nodes[0] || null;
+  }
+  function clickTarget(el) { return !el ? null : (el.tagName === 'BUTTON' ? el : (el.querySelector('button') || el)); }
+  // Material puts the bound id on the mat-checkbox host and "<id>-input" on the control it wraps.
+  function inputOf(el) { return !el ? null : (el.tagName === 'INPUT' ? el : el.querySelector('input[type="checkbox"]')); }
+  function bipCheckboxInput(cardId) {
+    var base = 'booking-details-checkbox-' + cardId;
+    return inputOf(document.getElementById(base)) || inputOf(document.getElementById(base + '-input'));
+  }
+  // Our CSS hides these checkboxes, but a hidden input still toggles and fires (change) on .click().
+  function setBipSelected(cardId, want) {
+    var input = bipCheckboxInput(cardId); if (!input) return false;
+    if (!!input.checked !== !!want) input.click();
+    return !!input.checked === !!want;
+  }
+  // Undo acts on the WHOLE selection, so start from an empty one. ROLLER's "select all" checkbox sits in
+  // the list header and our skin leaves it visible — without this, one stray tap on it would turn a single
+  // shield tap into "undo every ticket on the booking".
+  function clearBipSelection(exceptCardId) {
+    var all = inputOf(document.getElementById('select-all-checkbox'));
+    if (all && all.checked) all.click();
+    var keep = exceptCardId ? bipCheckboxInput(exceptCardId) : null, seen = [];
+    document.querySelectorAll('[id^="booking-details-checkbox-"]').forEach(function (el) {
+      var i = inputOf(el);                              // host and "-input" both match the prefix
+      if (!i || i === keep || seen.indexOf(i) >= 0) return;
+      seen.push(i);
+      if (i.checked) i.click();
+    });
+  }
+  function closeAnyMenu() {
+    var bd = document.querySelector('.cdk-overlay-backdrop');
+    if (bd) { bd.click(); return; }
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+  }
+  function startUndoCheckIn(cardId) {
+    if (undoBusy) return;
+    undoBusy = true;
+    document.body.classList.add('rcz-undoing');   // keep the menu we're about to drive off screen
+
+    function stop(msg) {
+      document.body.classList.remove('rcz-undoing');
+      try { closeAnyMenu(); } catch (e) {}
+      try { setBipSelected(cardId, false); } catch (e) {}
+      undoBusy = false;
+      if (msg) undoToast(msg, 10000);
+    }
+
+    clearBipSelection(cardId);
+    if (!setBipSelected(cardId, true)) {
+      stop('Couldn’t undo this check-in — ROLLER’s ticket selector isn’t on this screen. Reload the page and try again.');
+      return;
+    }
+    // ROLLER only grows the actions dropdown once our selection reaches its header component.
+    pollFor(function () { return firstVisible(document.querySelectorAll('[id="dropdown-more-actions"]')); }, 2500, function (trigger) {
+      if (!trigger) {
+        stop('Couldn’t undo this check-in — ROLLER’s actions menu didn’t appear. Undo it from ROLLER’s own ticket list instead.');
+        return;
+      }
+      clickTarget(trigger).click();
+      pollFor(function () { return document.getElementById('dropdown-option-undo'); }, 2500, function (opt) {
+        if (!opt) {
+          // The option is hidden unless canUndoCheckIn() passes, and the one thing that can block it here
+          // is the device setting — the ticket itself is checked in, or we wouldn't have intercepted.
+          stop('Undo check-in is switched off for this device. A manager can turn it on in ROLLER: Settings → Device → “Allow users to undo check-ins”.');
+          return;
+        }
+        opt.click();                                    // -> ROLLER's own "Undo check-in?" confirm modal
+        document.body.classList.remove('rcz-undoing');  // the modal is ROLLER's, and staff must see it
+        waitOutUndoDialog(cardId);
+      });
+    });
+  }
+  // ROLLER's confirm modal owns the rest. Watch until it's gone (confirmed or cancelled), then drop the
+  // selection we made so the header returns to normal. Bounded, so a modal someone walks away from can't
+  // wedge the flow shut forever.
+  function waitOutUndoDialog(cardId) {
+    var start = Date.now(), sawDialog = false;
+    var iv = setInterval(function () {
+      var open = !!document.querySelector('app-dialog-confirm');
+      if (open) sawDialog = true;
+      var settled = (sawDialog && !open) ||                          // staff answered it
+                    (!sawDialog && Date.now() - start > 4000) ||     // it never came (nothing to undo)
+                    (Date.now() - start > 120000);                   // hard stop
+      if (!settled) return;
+      clearInterval(iv);
+      try { setBipSelected(cardId, false); } catch (e) {}
+      undoBusy = false;
+      try { render(); } catch (e) {}
+    }, 250);
+  }
+  // ROLLER's own class on the button carries the state: theme--success = checked in, theme--secondary = not.
+  function shieldIsTicked(btn) {
+    if (btn.classList.contains('theme--success')) return true;
+    var wrap = btn.closest ? btn.closest('app-icon-button') : null;
+    return !!(wrap && wrap.classList.contains('theme--success'));
+  }
+  function installUndoCheckIn() {
+    if (!CFG.UNDO_CHECKIN || window.__rczUndoNav) return; window.__rczUndoNav = true;
+    document.addEventListener('click', function (ev) {
+      try {
+        if (!activeRoute()) return;
+        if (ev.button !== 0 || ev.metaKey || ev.ctrlKey || ev.shiftKey || ev.altKey) return;
+        var btn = ev.target && ev.target.closest ? ev.target.closest('button[id^="check-in-button-"]') : null;
+        if (!btn) return;
+        var cardId = btn.id.slice('check-in-button-'.length);
+        if (!cardId || cardId === 'wallet') return;                    // the cashless-wallet button shares the prefix
+        var host = btn.closest('app-bip-summary');
+        if (host && host.classList.contains('rcz-skip')) return;       // membership / non-ticket card: leave ROLLER alone
+        if (!shieldIsTicked(btn)) return;                              // not checked in -> ROLLER's normal check-in runs
+        // Capture phase, so this lands before ROLLER's own (click) — which on a multi-use pass would
+        // re-check-in rather than undo.
+        ev.preventDefault(); ev.stopImmediatePropagation();
+        startUndoCheckIn(cardId);
+      } catch (e) {}
+    }, true);
+  }
+
   function installBadgeLinkNav() {
     if (window.__rczBadgeNav) return; window.__rczBadgeNav = true;
     document.addEventListener('click', function (ev) {
@@ -1716,6 +1913,7 @@
     injectGlobalStyle();
     injectStyle();
     installBadgeLinkNav();
+    installUndoCheckIn();
     render();
     var obs = new MutationObserver(function () {
       // Off the booking route (e.g. the membership photo page), strip our stylesheet IMMEDIATELY — a busy
