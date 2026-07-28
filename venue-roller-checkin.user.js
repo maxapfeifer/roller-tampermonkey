@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Venue — ROLLER Check-in Cards + Member Photos
 // @namespace    venue.roller.checkin-cards
-// @version      5.99
+// @version      5.100
 // @description  Reformats the ROLLER POS booking check-in list into full-frame photo cards, surfaces member photos on load (no Verify click), alerts when a member has no photo, handles family memberships (best-effort photos + add-name prompt) and close/similar name matches.
 // @match        https://pos.roller.app/*
 // @match        https://*.roller.app/*
@@ -1626,25 +1626,30 @@
   // membership detail renders async after the soft nav, so poll for ROLLER's Guest tab (a stable id) and
   // click it once it's present + wired. Stop as soon as it's selected (so we never fight a manual switch),
   // or after a short timeout if it never appears. Tabs: Guest = bip-detail-tab-customer, Membership = ...-ticket.
+  var _guestTabIv = null;   // module-level so two link-throughs can never run overlapping switch loops
   function openGuestTabSoon() {
-    var start = Date.now(), iv = null;
-    function stop() { if (iv) { clearInterval(iv); iv = null; } document.removeEventListener('pointerdown', onUser, true); }
+    if (_guestTabIv) { clearInterval(_guestTabIv); _guestTabIv = null; }  // never hammer with two intervals at once
+    var start = Date.now(), lastClick = 0;
+    function stop() { if (_guestTabIv) { clearInterval(_guestTabIv); _guestTabIv = null; } document.removeEventListener('pointerdown', onUser, true); }
     // As soon as staff touch the screen (open the capture, hit Done, switch tab), back off completely — our
     // auto-switch must NEVER keep re-clicking the Guest tab and cancel the interaction they just started.
     // Get out of the user's way ONLY once the Guest tab is actually open; before that keep trying to reach it
     // (an unprocessed-membership item detail defaults to the Membership tab, so we must persist to switch).
     function onUser() { var g0 = document.getElementById('bip-detail-tab-customer'); if (g0 && g0.getAttribute('aria-selected') === 'true') stop(); }
     document.addEventListener('pointerdown', onUser, true);
-    iv = setInterval(function () {
+    _guestTabIv = setInterval(function () {
       try {
         var g = document.getElementById('bip-detail-tab-customer');
         if (g) {
           if (g.getAttribute('aria-selected') === 'true') { stop(); return; } // tab already open -> done
-          g.click();
+          // ROLLER loads the Guest tab async and only marks it selected once it settles. Poll fast (to detect
+          // that) but CLICK at most ~every 450ms — clicking every tick re-triggers the load and looks like the
+          // page refreshing over and over. One click, wait, check; only re-click if it genuinely didn't take.
+          if (Date.now() - lastClick > 450) { g.click(); lastClick = Date.now(); }
         }
         if (Date.now() - start > 4000) stop(); // give up after ~4s
       } catch (e) { stop(); }
-    }, 120);
+    }, 100);
   }
   // After ROLLER's "Done" saves and pushes the parent account page (the child path minus its last /id),
   // step back past it AND the child edit page (history.go(-2)) so staff land back where they came from
