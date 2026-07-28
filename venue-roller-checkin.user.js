@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Venue — ROLLER Check-in Cards + Member Photos
 // @namespace    venue.roller.checkin-cards
-// @version      5.105
+// @version      5.106
 // @description  Reformats the ROLLER POS booking check-in list into full-frame photo cards, surfaces member photos on load (no Verify click), alerts when a member has no photo, handles family memberships (best-effort photos + add-name prompt) and close/similar name matches.
 // @match        https://pos.roller.app/*
 // @match        https://*.roller.app/*
@@ -1641,27 +1641,42 @@
   // click it once it's present + wired. Stop as soon as it's selected (so we never fight a manual switch),
   // or after a short timeout if it never appears. Tabs: Guest = bip-detail-tab-customer, Membership = ...-ticket.
   var _guestTabIv = null;   // module-level so two link-throughs can never run overlapping switch loops
-  function openGuestTabSoon() {
-    if (_guestTabIv) { clearInterval(_guestTabIv); _guestTabIv = null; }  // never hammer with two intervals at once
-    var start = Date.now(), lastClick = 0;
+  // Get staff onto the member's Guest (photo) tab after an ADD PHOTO / link-through. ROLLER re-asserts its
+  // DEFAULT "Membership" tab several times in the first ~3s while the detail page loads, so we can't just
+  // click Guest once and stop — it gets flipped back ("glitchy / keeps refreshing"). We hold Guest until it
+  // sticks. With withCamera, once Guest has been stable a beat we ALSO pre-click ROLLER's "Click to take a
+  // photo" tile so staff land straight on the live camera (Capture button) — no tab-hunting at all.
+  function openGuestTabSoon(withCamera) {
+    if (_guestTabIv) { clearInterval(_guestTabIv); _guestTabIv = null; }  // never run two overlapping loops
+    var start = Date.now(), lastClick = 0, guestSince = 0, camDone = false;
     function stop() { if (_guestTabIv) { clearInterval(_guestTabIv); _guestTabIv = null; } document.removeEventListener('pointerdown', onUser, true); }
-    // As soon as staff touch the screen (open the capture, hit Done, switch tab), back off completely — our
-    // auto-switch must NEVER keep re-clicking the Guest tab and cancel the interaction they just started.
-    // Get out of the user's way ONLY once the Guest tab is actually open; before that keep trying to reach it
-    // (an unprocessed-membership item detail defaults to the Membership tab, so we must persist to switch).
+    // Back off the moment staff engage the OPEN Guest tab (tap Capture/Cancel, switch tab) so we never fight
+    // them — but only once it's actually open; before that we must persist through ROLLER's tab resets.
     function onUser() { var g0 = document.getElementById('bip-detail-tab-customer'); if (g0 && g0.getAttribute('aria-selected') === 'true') stop(); }
     document.addEventListener('pointerdown', onUser, true);
     _guestTabIv = setInterval(function () {
       try {
         var g = document.getElementById('bip-detail-tab-customer');
         if (g) {
-          if (g.getAttribute('aria-selected') === 'true') { stop(); return; } // tab already open -> done
-          // ROLLER loads the Guest tab async and only marks it selected once it settles. Poll fast (to detect
-          // that) but CLICK at most ~every 450ms — clicking every tick re-triggers the load and looks like the
-          // page refreshing over and over. One click, wait, check; only re-click if it genuinely didn't take.
-          if (Date.now() - lastClick > 450) { g.click(); lastClick = Date.now(); }
+          if (g.getAttribute('aria-selected') !== 'true') {
+            // Not on Guest (initial load, or ROLLER flipped us back). Re-select it — rate-limited to ~450ms
+            // so we never hammer (each click re-triggers ROLLER's async tab load, which is the flicker).
+            guestSince = 0;
+            if (Date.now() - lastClick > 450) { g.click(); lastClick = Date.now(); }
+          } else if (!withCamera) {
+            stop(); return;                                   // plain nav: on Guest, done
+          } else {
+            // On Guest and holding. Wait until it's been stable ~700ms (past ROLLER's reset window), then
+            // open the camera directly. If ROLLER flips us off before that, guestSince resets and we re-hold.
+            if (!guestSince) guestSince = Date.now();
+            if (!camDone && Date.now() - guestSince > 700 && !document.querySelector('video')) {
+              var cam = document.querySelector('button.image-capture__action-button');
+              if (cam && Date.now() - lastClick > 450) { cam.click(); lastClick = Date.now(); camDone = true; }
+            }
+            if (camDone && document.querySelector('video')) { stop(); return; }  // live camera up -> done
+          }
         }
-        if (Date.now() - start > 4000) stop(); // give up after ~4s
+        if (Date.now() - start > (withCamera ? 6000 : 4000)) stop();   // give ROLLER time to settle, then stop
       } catch (e) { stop(); }
     }, 100);
   }
@@ -1915,7 +1930,7 @@
             if (_bid) { try { sessionStorage.setItem('rcz-handoff', 'armed:' + _bid + ':' + uid); } catch (e) {} }
             var _th = unl.closest ? unl.closest('app-bip-summary') : null;
             var _tt = _th ? _th.querySelector('button[id^="booking-details-button-"]') : null;
-            if (_tt) { _tt.click(); openGuestTabSoon(); }
+            if (_tt) { _tt.click(); openGuestTabSoon(true); }   // ADD PHOTO -> land on the live camera
             return;
           }
           // membership-search ADD PHOTO: open THIS card's own Guest tab (no visiting-handoff modal)
@@ -1925,11 +1940,12 @@
             // This card's own item detail is the target — NOT a pill for an existing membership the same
             // person happens to hold. Flag the synthetic click so Section B lets ROLLER's native nav run
             // (-> /bookings/{id}/{part}) instead of forwarding to that existing membership.
-            if (_pt) { window.__rczItemNav = 1; _pt.click(); openGuestTabSoon(); }
+            if (_pt) { window.__rczItemNav = 1; _pt.click(); openGuestTabSoon(true); }   // ADD PHOTO -> live camera
             return;
           }
           var uhref = unl.getAttribute('data-rcz-href');
-          if (uhref && forwardToPill(uhref)) openGuestTabSoon();  // ADD NAME / ADD PHOTO -> the member's Guest tab (same as the blue tier link)
+          // ADD PHOTO -> land staff on the live camera; ADD NAME -> just the Guest tab (no camera).
+          if (uhref && forwardToPill(uhref)) openGuestTabSoon(_act === 'photo');
           return;
         }
         // A) the tier badge link -> membership detail, else fall back to the card's tile
