@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Venue — ROLLER Check-in Cards + Member Photos
 // @namespace    venue.roller.checkin-cards
-// @version      5.107
+// @version      5.108
 // @description  Reformats the ROLLER POS booking check-in list into full-frame photo cards, surfaces member photos on load (no Verify click), alerts when a member has no photo, handles family memberships (best-effort photos + add-name prompt) and close/similar name matches.
 // @match        https://pos.roller.app/*
 // @match        https://*.roller.app/*
@@ -1663,6 +1663,9 @@
     var start = Date.now(), lastClick = 0, guestSince = 0, camDone = false;
     if (withCamera) photoCover(true);
     function stop() { if (_guestTabIv) { clearInterval(_guestTabIv); _guestTabIv = null; } document.removeEventListener('pointerdown', onUser, true); photoCover(false); }
+    // No camera to open (member already has a photo, or ROLLER never rendered the capture) -> drop staff on
+    // ROLLER's normal Membership view (the regular path) rather than holding an empty Guest tab.
+    function toMembershipAndStop() { var mem = document.getElementById('bip-detail-tab-ticket'); if (mem && mem.getAttribute('aria-selected') !== 'true') mem.click(); stop(); }
     // Non-camera nav: back off once staff engage the OPEN Guest tab. Camera flow is covered, so there staff
     // can't tap anything until the camera is up — only then does a tap (on Capture/Cancel) hand control back.
     function onUser() {
@@ -1692,11 +1695,13 @@
               if (cam) { if (Date.now() - lastClick > 450) { cam.click(); lastClick = Date.now(); camDone = true; } }
               // stable a good while with no camera control at all (e.g. member already has a photo) -> nothing
               // to capture; reveal what's there rather than sit behind the cover.
-              else if (stableFor > 2200) { stop(); return; }
+              else if (stableFor > 2200) { toMembershipAndStop(); return; }
             }
           }
         }
-        if (Date.now() - start > (withCamera ? 7000 : 4000)) stop();   // hard cap; cover always lifts on stop
+        // hard cap; cover always lifts on stop. If the camera never came up, send staff to the normal
+        // Membership view rather than leaving them on a blank Guest tab.
+        if (Date.now() - start > (withCamera ? 7000 : 4000)) { if (withCamera && !document.querySelector('video')) toMembershipAndStop(); else stop(); }
       } catch (e) { stop(); }
     }, 100);
   }
