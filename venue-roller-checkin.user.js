@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Venue — ROLLER Check-in Cards + Member Photos
 // @namespace    venue.roller.checkin-cards
-// @version      5.103
+// @version      5.104
 // @description  Reformats the ROLLER POS booking check-in list into full-frame photo cards, surfaces member photos on load (no Verify click), alerts when a member has no photo, handles family memberships (best-effort photos + add-name prompt) and close/similar name matches.
 // @match        https://pos.roller.app/*
 // @match        https://*.roller.app/*
@@ -686,10 +686,11 @@
     document.querySelectorAll('app-bip-summary:not(.rcz-skip) button[id^="check-in-button"]').forEach(function (btn) {
       if (btn.querySelector('.rcz-shieldtxt')) return;
       var el = document.createElement('span'); el.className = 'rcz-shieldtxt';
-      // "Needs check-in" state shows a clear (no shield fill) opaque grey tick in ROLLER's own icon grey —
-      // matching ROLLER's stock un-checked UX, not our old gold shield / "Confirm I.D." label. The green
-      // success shield (checked-in) is untouched, so a checked-in guest still stands out.
-      el.innerHTML = '<span class="rcz-shieldtxt__tick"><svg viewBox="0 0 24 24" fill="none" stroke="#72727a" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg></span>';
+      // "Needs check-in" state: a FAINT grey shield outline (no fill) with a faint grey tick inside, both in
+      // ROLLER's own icon grey at the same low opacity — matching ROLLER's stock un-checked UX, not our old
+      // gold shield / "Confirm I.D." label. Shield path matches the green success shield so they line up;
+      // the green (checked-in) shield is untouched, so a checked-in guest still stands out.
+      el.innerHTML = '<span class="rcz-shieldtxt__tick"><svg viewBox="0 0 48 48" fill="none" stroke="#72727a" stroke-opacity="0.5" stroke-linecap="round" stroke-linejoin="round"><path d="M24 2 L44 9 L44 24 C44 36 35 43 24 47 C13 43 4 36 4 24 L4 9 Z" stroke-width="1.8"/><path d="M15.5 24.5 l5.5 5.5 L34 16.5" stroke-width="3"/></svg></span>';
       btn.appendChild(el);
     });
   }
@@ -756,7 +757,7 @@
       (CFG.SHOW_SHIELD ? '.rcz-shieldtxt{position:absolute !important;inset:0 !important;z-index:1 !important;display:none;flex-direction:column !important;align-items:center !important;justify-content:center !important;padding-bottom:6px !important;color:#fff !important;pointer-events:none !important;text-align:center !important;}' : ''),
       (CFG.SHOW_SHIELD ? 'app-bip-summary:not(.rcz-skip) button[id^="check-in-button"].theme--secondary .rcz-shieldtxt{display:flex !important;}' : ''),
       (CFG.SHOW_SHIELD ? '.rcz-shieldtxt__tick{display:flex !important;align-items:center !important;justify-content:center !important;}' : ''),
-      (CFG.SHOW_SHIELD ? '.rcz-shieldtxt__tick svg{width:26px !important;height:26px !important;margin-bottom:0 !important;}' : ''),
+      (CFG.SHOW_SHIELD ? '.rcz-shieldtxt__tick svg{width:46px !important;height:46px !important;margin:0 !important;overflow:visible !important;}' : ''),
       (CFG.SHOW_SHIELD ? 'app-bip-summary:not(.rcz-skip) .summary__wrapper button[id^="check-in-button"].theme--success mat-icon{color:#fff !important;margin-bottom:6px !important;}' : ''),
 
       /* ALERT (member with no photo) — fills the whole card and dominates; icon hidden */
