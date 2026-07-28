@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Venue — ROLLER Check-in Cards + Member Photos
 // @namespace    venue.roller.checkin-cards
-// @version      5.100
+// @version      5.101
 // @description  Reformats the ROLLER POS booking check-in list into full-frame photo cards, surfaces member photos on load (no Verify click), alerts when a member has no photo, handles family memberships (best-effort photos + add-name prompt) and close/similar name matches.
 // @match        https://pos.roller.app/*
 // @match        https://*.roller.app/*
@@ -686,7 +686,9 @@
     document.querySelectorAll('app-bip-summary:not(.rcz-skip) button[id^="check-in-button"]').forEach(function (btn) {
       if (btn.querySelector('.rcz-shieldtxt')) return;
       var el = document.createElement('span'); el.className = 'rcz-shieldtxt';
-      el.innerHTML = '<span class="rcz-shieldtxt__id">' + esc(CFG.SHIELD_LABEL) + '</span><span class="rcz-shieldtxt__sub">' + esc(CFG.SHIELD_SUB) + '</span>';
+      // Non-green (gold "needs check-in") shield shows a plain white tick, matching ROLLER's stock UX —
+      // not our old "Confirm I.D." label. Same tick as the green success shield, just on the gold shield.
+      el.innerHTML = '<span class="rcz-shieldtxt__tick"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg></span>';
       btn.appendChild(el);
     });
   }
@@ -752,8 +754,8 @@
       (CFG.SHOW_SHIELD ? 'app-bip-summary:not(.rcz-skip) .summary__wrapper button[id^="check-in-button"].theme--secondary mat-icon{display:none !important;}' : ''),
       (CFG.SHOW_SHIELD ? '.rcz-shieldtxt{position:absolute !important;inset:0 !important;z-index:1 !important;display:none;flex-direction:column !important;align-items:center !important;justify-content:center !important;padding-bottom:6px !important;color:#fff !important;pointer-events:none !important;text-align:center !important;}' : ''),
       (CFG.SHOW_SHIELD ? 'app-bip-summary:not(.rcz-skip) button[id^="check-in-button"].theme--secondary .rcz-shieldtxt{display:flex !important;}' : ''),
-      (CFG.SHOW_SHIELD ? '.rcz-shieldtxt__id{font:400 9px/1 Roboto,Arial,sans-serif !important;letter-spacing:.02em !important;}' : ''),
-      (CFG.SHOW_SHIELD ? '.rcz-shieldtxt__sub{font:400 16px/1 Roboto,Arial,sans-serif !important;letter-spacing:0 !important;margin-top:1px !important;}' : ''),
+      (CFG.SHOW_SHIELD ? '.rcz-shieldtxt__tick{display:flex !important;align-items:center !important;justify-content:center !important;}' : ''),
+      (CFG.SHOW_SHIELD ? '.rcz-shieldtxt__tick svg{width:22px !important;height:22px !important;margin-bottom:4px !important;}' : ''),
       (CFG.SHOW_SHIELD ? 'app-bip-summary:not(.rcz-skip) .summary__wrapper button[id^="check-in-button"].theme--success mat-icon{color:#fff !important;margin-bottom:6px !important;}' : ''),
 
       /* ALERT (member with no photo) — fills the whole card and dominates; icon hidden */
