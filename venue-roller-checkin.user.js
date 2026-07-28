@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Venue — ROLLER Check-in Cards + Member Photos
 // @namespace    venue.roller.checkin-cards
-// @version      5.106
+// @version      5.107
 // @description  Reformats the ROLLER POS booking check-in list into full-frame photo cards, surfaces member photos on load (no Verify click), alerts when a member has no photo, handles family memberships (best-effort photos + add-name prompt) and close/similar name matches.
 // @match        https://pos.roller.app/*
 // @match        https://*.roller.app/*
@@ -1641,18 +1641,34 @@
   // click it once it's present + wired. Stop as soon as it's selected (so we never fight a manual switch),
   // or after a short timeout if it never appears. Tabs: Guest = bip-detail-tab-customer, Membership = ...-ticket.
   var _guestTabIv = null;   // module-level so two link-throughs can never run overlapping switch loops
-  // Get staff onto the member's Guest (photo) tab after an ADD PHOTO / link-through. ROLLER re-asserts its
-  // DEFAULT "Membership" tab several times in the first ~3s while the detail page loads, so we can't just
-  // click Guest once and stop — it gets flipped back ("glitchy / keeps refreshing"). We hold Guest until it
-  // sticks. With withCamera, once Guest has been stable a beat we ALSO pre-click ROLLER's "Click to take a
-  // photo" tile so staff land straight on the live camera (Capture button) — no tab-hunting at all.
+  // Full-screen "Opening camera…" cover. ROLLER re-asserts its default Membership tab several times in the
+  // first ~3s of load, so getting to the Guest tab + camera involves visible tab flip-flop ("glitchy"). We
+  // hide that whole journey behind this cover and only lift it once the live camera is actually up.
+  function photoCover(on) {
+    var m = document.getElementById('rcz-photocover');
+    if (on) {
+      if (!m && document.body) {
+        m = document.createElement('div'); m.id = 'rcz-photocover';
+        m.setAttribute('style', 'position:fixed;inset:0;z-index:2147483000;background:#f4f5f7;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;font:600 17px/1.3 Roboto,Arial,sans-serif;color:#6b7280;');
+        m.innerHTML = '<div style="width:34px;height:34px;border:3px solid #d1d5db;border-top-color:#6b7280;border-radius:50%;animation:rczspin 0.8s linear infinite;"></div><div>Opening camera…</div><style>@keyframes rczspin{to{transform:rotate(360deg)}}</style>';
+        document.body.appendChild(m);
+      }
+    } else if (m) { m.remove(); }
+  }
+  // Get staff onto the member's Guest (photo) tab after an ADD PHOTO / link-through, holding it through
+  // ROLLER's tab resets. With withCamera, once Guest is stable a beat we pre-click ROLLER's "Click to take a
+  // photo" tile so staff land straight on the live camera — the whole flippy journey hidden behind the cover.
   function openGuestTabSoon(withCamera) {
     if (_guestTabIv) { clearInterval(_guestTabIv); _guestTabIv = null; }  // never run two overlapping loops
     var start = Date.now(), lastClick = 0, guestSince = 0, camDone = false;
-    function stop() { if (_guestTabIv) { clearInterval(_guestTabIv); _guestTabIv = null; } document.removeEventListener('pointerdown', onUser, true); }
-    // Back off the moment staff engage the OPEN Guest tab (tap Capture/Cancel, switch tab) so we never fight
-    // them — but only once it's actually open; before that we must persist through ROLLER's tab resets.
-    function onUser() { var g0 = document.getElementById('bip-detail-tab-customer'); if (g0 && g0.getAttribute('aria-selected') === 'true') stop(); }
+    if (withCamera) photoCover(true);
+    function stop() { if (_guestTabIv) { clearInterval(_guestTabIv); _guestTabIv = null; } document.removeEventListener('pointerdown', onUser, true); photoCover(false); }
+    // Non-camera nav: back off once staff engage the OPEN Guest tab. Camera flow is covered, so there staff
+    // can't tap anything until the camera is up — only then does a tap (on Capture/Cancel) hand control back.
+    function onUser() {
+      if (withCamera) { if (document.querySelector('video')) stop(); }
+      else { var g0 = document.getElementById('bip-detail-tab-customer'); if (g0 && g0.getAttribute('aria-selected') === 'true') stop(); }
+    }
     document.addEventListener('pointerdown', onUser, true);
     _guestTabIv = setInterval(function () {
       try {
@@ -1666,17 +1682,21 @@
           } else if (!withCamera) {
             stop(); return;                                   // plain nav: on Guest, done
           } else {
-            // On Guest and holding. Wait until it's been stable ~700ms (past ROLLER's reset window), then
-            // open the camera directly. If ROLLER flips us off before that, guestSince resets and we re-hold.
+            // On Guest and holding. The live camera being up is the finish line — lift the cover and stop.
+            if (document.querySelector('video')) { stop(); return; }
             if (!guestSince) guestSince = Date.now();
-            if (!camDone && Date.now() - guestSince > 700 && !document.querySelector('video')) {
+            var stableFor = Date.now() - guestSince;
+            if (stableFor > 700) {
               var cam = document.querySelector('button.image-capture__action-button');
-              if (cam && Date.now() - lastClick > 450) { cam.click(); lastClick = Date.now(); camDone = true; }
+              // open the capture (retry if a late ROLLER reset closed it); rate-limited
+              if (cam) { if (Date.now() - lastClick > 450) { cam.click(); lastClick = Date.now(); camDone = true; } }
+              // stable a good while with no camera control at all (e.g. member already has a photo) -> nothing
+              // to capture; reveal what's there rather than sit behind the cover.
+              else if (stableFor > 2200) { stop(); return; }
             }
-            if (camDone && document.querySelector('video')) { stop(); return; }  // live camera up -> done
           }
         }
-        if (Date.now() - start > (withCamera ? 6000 : 4000)) stop();   // give ROLLER time to settle, then stop
+        if (Date.now() - start > (withCamera ? 7000 : 4000)) stop();   // hard cap; cover always lifts on stop
       } catch (e) { stop(); }
     }, 100);
   }
