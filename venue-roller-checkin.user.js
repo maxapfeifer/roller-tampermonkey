@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Venue — ROLLER Check-in Cards + Member Photos
 // @namespace    venue.roller.checkin-cards
-// @version      5.102
+// @version      5.103
 // @description  Reformats the ROLLER POS booking check-in list into full-frame photo cards, surfaces member photos on load (no Verify click), alerts when a member has no photo, handles family memberships (best-effort photos + add-name prompt) and close/similar name matches.
 // @match        https://pos.roller.app/*
 // @match        https://*.roller.app/*
@@ -686,9 +686,10 @@
     document.querySelectorAll('app-bip-summary:not(.rcz-skip) button[id^="check-in-button"]').forEach(function (btn) {
       if (btn.querySelector('.rcz-shieldtxt')) return;
       var el = document.createElement('span'); el.className = 'rcz-shieldtxt';
-      // Non-green (gold "needs check-in") shield shows a plain white tick, matching ROLLER's stock UX —
-      // not our old "Confirm I.D." label. Same tick as the green success shield, just on the gold shield.
-      el.innerHTML = '<span class="rcz-shieldtxt__tick"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg></span>';
+      // "Needs check-in" state shows a clear (no shield fill) opaque grey tick in ROLLER's own icon grey —
+      // matching ROLLER's stock un-checked UX, not our old gold shield / "Confirm I.D." label. The green
+      // success shield (checked-in) is untouched, so a checked-in guest still stands out.
+      el.innerHTML = '<span class="rcz-shieldtxt__tick"><svg viewBox="0 0 24 24" fill="none" stroke="#72727a" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg></span>';
       btn.appendChild(el);
     });
   }
@@ -749,13 +750,13 @@
       /* SHIELD — reacts to ROLLER\'s own state class: theme--secondary = NOT checked in (amber "I.D."),
          theme--success = checked in (green tick). Pure CSS, so it flips the instant staff check someone in. */
       (CFG.SHOW_SHIELD ? 'app-bip-summary:not(.rcz-skip) .summary__wrapper button[id^="check-in-button"]::before{content:"" !important;position:absolute !important;inset:0 !important;z-index:0 !important;clip-path:path("M24 2 L44 9 L44 24 C44 36 35 43 24 47 C13 43 4 36 4 24 L4 9 Z") !important;filter:drop-shadow(0 2px 3px rgba(0,0,0,.4)) !important;}' : ''),
-      (CFG.SHOW_SHIELD ? 'app-bip-summary:not(.rcz-skip) .summary__wrapper button[id^="check-in-button"].theme--secondary::before{background:#e0a316 !important;}' : ''),
+      (CFG.SHOW_SHIELD ? 'app-bip-summary:not(.rcz-skip) .summary__wrapper button[id^="check-in-button"].theme--secondary::before{background:transparent !important;filter:none !important;}' : ''),
       (CFG.SHOW_SHIELD ? 'app-bip-summary:not(.rcz-skip) .summary__wrapper button[id^="check-in-button"].theme--success::before{background:#16a34a !important;}' : ''),
       (CFG.SHOW_SHIELD ? 'app-bip-summary:not(.rcz-skip) .summary__wrapper button[id^="check-in-button"].theme--secondary mat-icon{display:none !important;}' : ''),
       (CFG.SHOW_SHIELD ? '.rcz-shieldtxt{position:absolute !important;inset:0 !important;z-index:1 !important;display:none;flex-direction:column !important;align-items:center !important;justify-content:center !important;padding-bottom:6px !important;color:#fff !important;pointer-events:none !important;text-align:center !important;}' : ''),
       (CFG.SHOW_SHIELD ? 'app-bip-summary:not(.rcz-skip) button[id^="check-in-button"].theme--secondary .rcz-shieldtxt{display:flex !important;}' : ''),
       (CFG.SHOW_SHIELD ? '.rcz-shieldtxt__tick{display:flex !important;align-items:center !important;justify-content:center !important;}' : ''),
-      (CFG.SHOW_SHIELD ? '.rcz-shieldtxt__tick svg{width:22px !important;height:22px !important;margin-bottom:4px !important;}' : ''),
+      (CFG.SHOW_SHIELD ? '.rcz-shieldtxt__tick svg{width:26px !important;height:26px !important;margin-bottom:0 !important;}' : ''),
       (CFG.SHOW_SHIELD ? 'app-bip-summary:not(.rcz-skip) .summary__wrapper button[id^="check-in-button"].theme--success mat-icon{color:#fff !important;margin-bottom:6px !important;}' : ''),
 
       /* ALERT (member with no photo) — fills the whole card and dominates; icon hidden */
