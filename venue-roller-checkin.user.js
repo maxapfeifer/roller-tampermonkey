@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Venue — ROLLER Check-in Cards + Member Photos
 // @namespace    venue.roller.checkin-cards
-// @version      5.101
+// @version      5.102
 // @description  Reformats the ROLLER POS booking check-in list into full-frame photo cards, surfaces member photos on load (no Verify click), alerts when a member has no photo, handles family memberships (best-effort photos + add-name prompt) and close/similar name matches.
 // @match        https://pos.roller.app/*
 // @match        https://*.roller.app/*
@@ -1541,7 +1541,17 @@
         } else if (info && !info.pending && info.member === false) {
           // casual (non-member) OR foster-care partner -> plain tile with a bottom-left tag. Foster guests
           // get the "Foster CARE Ticket" tag in place of "Casual Guest"; everything else is identical.
-          if (img) img.remove();
+          // Edge case: a casual can still carry a photo (e.g. mid-upgrade to membership, where the captured
+          // membership photo is attached to their guest profile). If so, show that photo full-bleed like a
+          // member tile and drop the big age label (gated below) instead of painting the label over the photo.
+          var cnp = nativePhotoImg(btn);
+          if (cnp) {
+            if (icon) icon.style.display = 'none';
+            cnp.style.display = 'none';
+            if (!img) { img = document.createElement('img'); img.className = 'rcz-photo'; img.alt = ''; btn.appendChild(img); }
+            var csrc = cnp.getAttribute('src');
+            if (img.getAttribute('src') !== csrc) img.setAttribute('src', csrc);
+          } else if (img) { img.remove(); }
           var cnm = holderNameFor(w, cardId);
           var ccat = ((w.querySelector('.summary-detail__item--emphasis') || {}).textContent || '').trim();
           addCasual(w, cnm, ccat, info.fosterCare ? CFG.FOSTER_LABEL : null); clrAlert(w); clrMismatch(w); clrVisiting(w); clrNote(w); clrBadge(w); clrActionReq(w);
@@ -1552,7 +1562,7 @@
           clrAlert(w); clrCasual(w); clrMismatch(w); clrVisiting(w); clrNote(w); clrBadge(w); clrActionReq(w);
         }
         // age-type icon on casual / foster tiles (#2), chosen by ticket type; cleared on member/other tiles
-        if (info && !info.pending && info.member === false) {
+        if (info && !info.pending && info.member === false && !w.querySelector('img.rcz-photo')) {
           setAgeText(btn, ((w.querySelector('.summary-detail__item--emphasis') || {}).textContent || ''), holderNameFor(w, cardId));
         } else { clrAgeText(btn); }
         // #8/#9: when a member ticket recorded no name, surface the membership member's name at the bottom.
