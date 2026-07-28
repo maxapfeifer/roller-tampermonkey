@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Venue — ROLLER Check-in Cards + Member Photos
 // @namespace    venue.roller.checkin-cards
-// @version      5.104
+// @version      5.105
 // @description  Reformats the ROLLER POS booking check-in list into full-frame photo cards, surfaces member photos on load (no Verify click), alerts when a member has no photo, handles family memberships (best-effort photos + add-name prompt) and close/similar name matches.
 // @match        https://pos.roller.app/*
 // @match        https://*.roller.app/*
@@ -1975,9 +1975,11 @@
   function injectGlobalStyle() {
     if (document.getElementById('rcz-global') || !document.head) return;
     var rules = [
-      // Staff never want these ROLLER controls — hide on every screen:
-      // the Select all / Hide checked-in header bar, and the "verify membership discount" banner.
-      'app-bip-list-header,#select-all-checkbox,#hide-checked-in-checkbox{display:none !important;}',
+      // Staff never want these ROLLER controls — hide on every screen: the Select all / Hide checked-in
+      // checkboxes, and the "verify membership discount" banner. NB: hide only .bip-list-header__checkboxes,
+      // NOT the whole app-bip-list-header — its sibling .bip-list-header__actions holds the bulk-actions menu
+      // (#dropdown-more-actions) that the Undo check-in flow drives, so hiding the header would break undo.
+      '.bip-list-header__checkboxes{display:none !important;}',
       '#booking-membership-verification-banner{display:none !important;}'
     ];
     if (CFG.HIDE_REDEEM) rules.push('#redeem-membership-button,app-generic-button:has(#redeem-membership-button){display:none !important;}');
