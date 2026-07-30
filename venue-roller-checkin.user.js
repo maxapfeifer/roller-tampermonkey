@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Venue — ROLLER Check-in Cards + Member Photos
 // @namespace    venue.roller.checkin-cards
-// @version      5.108
+// @version      5.109
 // @description  Reformats the ROLLER POS booking check-in list into full-frame photo cards, surfaces member photos on load (no Verify click), alerts when a member has no photo, handles family memberships (best-effort photos + add-name prompt) and close/similar name matches.
 // @match        https://pos.roller.app/*
 // @match        https://*.roller.app/*
@@ -41,6 +41,7 @@
     // shown as a "Foster CARE Ticket" (where "Casual Guest" normally sits), never as members.
     FOSTER_MATCH:     ['mfslumk', 'mackillop family services'],
     FOSTER_LABEL:     'Foster CARE Ticket',
+    PHOTO_FILE_UPLOAD: true,  // add a "Choose a photo file / drag-drop" button by ROLLER's camera capture, feeding the chosen image into ROLLER's own Capture pipeline
     HIDE_REDEEM:      true,   // hide ROLLER's "Redeem membership" button everywhere
     DONE_STEP_BACK:   true,   // after "Done" on a child member page, step back past the parent page it pushes
     FLAG_MISASSIGNED: false,  // OFF: a discount mis-assignment where the real member IS on the booking shows nothing (normal member). Set true to restore the "MEMBERSHIP DISCOUNT MIS-ASSIGNED" reassurance note.
@@ -1442,6 +1443,7 @@
     try {
       injectGlobalStyle();
       hideRedeemButtons();
+      ensureFileUploadBtn();   // "Choose a photo file" beside ROLLER's camera capture (runs on the member/item detail pages too, so it's before the activeRoute gate)
       if (membershipDetailRoute()) ensureBackButtons(); else removeBackButtons();
       if (!activeRoute()) {
         // not the booking check-in list -> strip our styling/overlays so ROLLER's native pages work
@@ -2024,6 +2026,14 @@
       '#booking-membership-verification-banner{display:none !important;}'
     ];
     if (CFG.HIDE_REDEEM) rules.push('#redeem-membership-button,app-generic-button:has(#redeem-membership-button){display:none !important;}');
+    if (CFG.PHOTO_FILE_UPLOAD) rules.push(
+      '.rcz-filewrap{display:flex !important;justify-content:center !important;margin:10px 0 4px !important;}',
+      '.rcz-filebtn{display:flex !important;flex-direction:column !important;align-items:center !important;gap:2px !important;width:100% !important;max-width:220px !important;padding:10px 16px !important;border:1.5px dashed #9aa3af !important;border-radius:10px !important;background:#fff !important;cursor:pointer !important;text-align:center !important;}',
+      '.rcz-filebtn:hover{border-color:#2f6fed !important;background:#f5f8ff !important;}',
+      '.rcz-filebtn--over{border-color:#2f6fed !important;background:#eaf1ff !important;}',
+      '.rcz-filebtn__hd{font:600 14px/1.2 Roboto,Arial,sans-serif !important;color:#2f6fed !important;}',
+      '.rcz-filebtn__sub{font:400 11px/1.2 Roboto,Arial,sans-serif !important;color:#6b7280 !important;}'
+    );
     var s = document.createElement('style'); s.id = 'rcz-global';
     s.textContent = rules.join('');
     document.head.appendChild(s);
@@ -2041,6 +2051,71 @@
       }
     }
   }
+
+  // ---- Photo-from-file: an alternative to ROLLER's camera capture ----------------------------------------
+  // ROLLER's capture is camera-only: click "Click to take a photo" -> getUserMedia -> a <video> preview ->
+  // hit Capture -> it draws the video frame onto a <canvas> and uploads THAT to the member. We add a "Choose
+  // a photo file" button (also a drop target) next to the capture. When staff pick/drop an image we open
+  // ROLLER's camera (to get its <video>/Capture wiring), then swap the video's stream for a canvas painting
+  // our file. ROLLER's own Capture then grabs our image and saves it through its normal pipeline — we never
+  // touch its API, so the photo lands on the right member with the right auth.
+  function paintCover(ctx, img, w, h) {                 // cover-fit the image into w x h, centred
+    var s = Math.max(w / img.width, h / img.height), dw = img.width * s, dh = img.height * s;
+    ctx.fillStyle = '#000'; ctx.fillRect(0, 0, w, h);
+    ctx.drawImage(img, (w - dw) / 2, (h - dh) / 2, dw, dh);
+  }
+  function swapVideoToImage(video, img) {
+    var w = video.videoWidth || 640, h = video.videoHeight || 480;
+    var canvas = document.createElement('canvas'); canvas.width = w; canvas.height = h;
+    var ctx = canvas.getContext('2d');
+    paintCover(ctx, img, w, h);
+    var orig = video.srcObject;
+    var stream = canvas.captureStream(15);
+    video.srcObject = stream;
+    if (video.play) { try { video.play(); } catch (e) {} }
+    try { if (orig && orig.getTracks) orig.getTracks().forEach(function (t) { t.stop(); }); } catch (e) {}  // turn the real webcam off
+    // keep pushing frames (some browsers only emit on redraw) until the capture closes or a safety cap
+    var start = Date.now();
+    var iv = setInterval(function () {
+      if (!document.body.contains(video) || Date.now() - start > 120000) { clearInterval(iv); return; }
+      paintCover(ctx, img, w, h);
+    }, 250);
+  }
+  function useFilePhoto(cap, file) {
+    if (!file || !/^image\//.test(file.type)) return;
+    var url = URL.createObjectURL(file), img = new Image();
+    img.onload = function () {
+      var video = document.querySelector('video');
+      if (!video) { var ab = cap.querySelector('button.image-capture__action-button'); if (ab) ab.click(); }  // open ROLLER's camera to get its <video>/Capture wiring
+      var start = Date.now();
+      var poll = setInterval(function () {
+        var v = document.querySelector('video');
+        if (v && v.videoWidth > 0 && v.srcObject) { clearInterval(poll); swapVideoToImage(v, img); URL.revokeObjectURL(url); }
+        else if (Date.now() - start > 6000) { clearInterval(poll); URL.revokeObjectURL(url); }
+      }, 100);
+    };
+    img.onerror = function () { URL.revokeObjectURL(url); };
+    img.src = url;
+  }
+  function addFileBtn(cap) {
+    if (cap.parentNode && cap.parentNode.querySelector(':scope > .rcz-filewrap')) return;   // already added next to this capture
+    var wrap = document.createElement('div'); wrap.className = 'rcz-filewrap';
+    var btn = document.createElement('button'); btn.type = 'button'; btn.className = 'rcz-filebtn';
+    btn.innerHTML = '<span class="rcz-filebtn__hd">Choose a photo file</span><span class="rcz-filebtn__sub">or drag &amp; drop one here</span>';
+    var input = document.createElement('input'); input.type = 'file'; input.accept = 'image/*'; input.style.display = 'none';
+    wrap.appendChild(btn); wrap.appendChild(input);
+    cap.insertAdjacentElement('afterend', wrap);          // sibling AFTER the capture tile so Angular's own re-renders don't wipe it
+    btn.addEventListener('click', function (e) { e.preventDefault(); e.stopPropagation(); input.click(); });
+    input.addEventListener('change', function () { if (input.files && input.files[0]) useFilePhoto(cap, input.files[0]); input.value = ''; });
+    ['dragover', 'dragenter'].forEach(function (t) { btn.addEventListener(t, function (e) { e.preventDefault(); e.stopPropagation(); btn.classList.add('rcz-filebtn--over'); }); });
+    ['dragleave', 'dragend'].forEach(function (t) { btn.addEventListener(t, function (e) { e.preventDefault(); btn.classList.remove('rcz-filebtn--over'); }); });
+    btn.addEventListener('drop', function (e) { e.preventDefault(); e.stopPropagation(); btn.classList.remove('rcz-filebtn--over'); var f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0]; if (f) useFilePhoto(cap, f); });
+  }
+  function ensureFileUploadBtn() {
+    if (!CFG.PHOTO_FILE_UPLOAD) return;
+    document.querySelectorAll('.image-capture').forEach(function (cap) { addFileBtn(cap); });
+  }
+
   function boot() {
     injectGlobalStyle();
     injectStyle();
