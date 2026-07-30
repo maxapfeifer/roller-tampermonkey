@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Venue — ROLLER Check-in Cards + Member Photos
 // @namespace    venue.roller.checkin-cards
-// @version      5.109
+// @version      5.110
 // @description  Reformats the ROLLER POS booking check-in list into full-frame photo cards, surfaces member photos on load (no Verify click), alerts when a member has no photo, handles family memberships (best-effort photos + add-name prompt) and close/similar name matches.
 // @match        https://pos.roller.app/*
 // @match        https://*.roller.app/*
@@ -2053,46 +2053,71 @@
   }
 
   // ---- Photo-from-file: an alternative to ROLLER's camera capture ----------------------------------------
-  // ROLLER's capture is camera-only: click "Click to take a photo" -> getUserMedia -> a <video> preview ->
-  // hit Capture -> it draws the video frame onto a <canvas> and uploads THAT to the member. We add a "Choose
-  // a photo file" button (also a drop target) next to the capture. When staff pick/drop an image we open
-  // ROLLER's camera (to get its <video>/Capture wiring), then swap the video's stream for a canvas painting
-  // our file. ROLLER's own Capture then grabs our image and saves it through its normal pipeline — we never
-  // touch its API, so the photo lands on the right member with the right auth.
+  // ROLLER's capture reads the frame from the camera TRACK (not the <video> element), so swapping the video's
+  // preview doesn't feed Capture. Instead we intercept getUserMedia: when staff pick/drop a file, the "camera"
+  // ROLLER opens IS a canvas painting that file. ROLLER's own Capture then grabs our image — whether it reads
+  // the track or the video — and saves it through its normal pipeline. No direct API calls; correct member/auth.
   function paintCover(ctx, img, w, h) {                 // cover-fit the image into w x h, centred
     var s = Math.max(w / img.width, h / img.height), dw = img.width * s, dh = img.height * s;
     ctx.fillStyle = '#000'; ctx.fillRect(0, 0, w, h);
     ctx.drawImage(img, (w - dw) / 2, (h - dh) / 2, dw, dh);
   }
-  function swapVideoToImage(video, img) {
-    var w = video.videoWidth || 640, h = video.videoHeight || 480;
+  // Patch getUserMedia once: pass through to the real camera, EXCEPT when we've armed a file stream (one-shot).
+  function installCameraOverride() {
+    try {
+      var md = navigator.mediaDevices;
+      if (!md || !md.getUserMedia || md.__rczPatched) return;
+      var orig = md.getUserMedia.bind(md);
+      md.getUserMedia = function (constraints) {
+        if (window.__rczPhotoStream) { var s = window.__rczPhotoStream; window.__rczPhotoStream = null; return Promise.resolve(s); }
+        return orig(constraints);
+      };
+      md.__rczPatched = true;
+    } catch (e) {}
+  }
+  // A live MediaStream whose single video track is a canvas painting the chosen image (kept refreshed so the
+  // track never goes stale before ROLLER captures it).
+  function makeFileStream(img) {
+    var w = 960, h = 720;                                 // 4:3, matching a typical webcam capture
     var canvas = document.createElement('canvas'); canvas.width = w; canvas.height = h;
     var ctx = canvas.getContext('2d');
     paintCover(ctx, img, w, h);
-    var orig = video.srcObject;
     var stream = canvas.captureStream(15);
-    video.srcObject = stream;
-    if (video.play) { try { video.play(); } catch (e) {} }
-    try { if (orig && orig.getTracks) orig.getTracks().forEach(function (t) { t.stop(); }); } catch (e) {}  // turn the real webcam off
-    // keep pushing frames (some browsers only emit on redraw) until the capture closes or a safety cap
     var start = Date.now();
     var iv = setInterval(function () {
-      if (!document.body.contains(video) || Date.now() - start > 120000) { clearInterval(iv); return; }
+      if (!stream.active || Date.now() - start > 180000) { clearInterval(iv); return; }
       paintCover(ctx, img, w, h);
-    }, 250);
+    }, 200);
+    return stream;
+  }
+  // Close ROLLER's currently-open capture (so it will re-request the camera and pick up our armed stream).
+  // The capture area has the unique "Capture" button; its sibling "Cancel" discards without saving.
+  function closeCapture() {
+    var capBtn = Array.from(document.querySelectorAll('button')).filter(function (b) { return /^\s*capture\s*$/i.test(b.textContent || ''); })[0];
+    if (!capBtn) return;
+    var scope = capBtn.parentElement;
+    for (var d = 0; d < 3 && scope; d++) {
+      var cancel = Array.from(scope.querySelectorAll('button')).filter(function (b) { return /^\s*cancel\s*$/i.test(b.textContent || ''); })[0];
+      if (cancel) { cancel.click(); return; }
+      scope = scope.parentElement;
+    }
   }
   function useFilePhoto(cap, file) {
     if (!file || !/^image\//.test(file.type)) return;
     var url = URL.createObjectURL(file), img = new Image();
     img.onload = function () {
-      var video = document.querySelector('video');
-      if (!video) { var ab = cap.querySelector('button.image-capture__action-button'); if (ab) ab.click(); }  // open ROLLER's camera to get its <video>/Capture wiring
+      URL.revokeObjectURL(url);
+      installCameraOverride();
+      window.__rczPhotoStream = makeFileStream(img);      // arm the one-shot override
+      if (document.querySelector('video')) closeCapture(); // if the real camera is open, close it so it reopens with our stream
       var start = Date.now();
       var poll = setInterval(function () {
-        var v = document.querySelector('video');
-        if (v && v.videoWidth > 0 && v.srcObject) { clearInterval(poll); swapVideoToImage(v, img); URL.revokeObjectURL(url); }
-        else if (Date.now() - start > 6000) { clearInterval(poll); URL.revokeObjectURL(url); }
-      }, 100);
+        var ab = cap.querySelector('button.image-capture__action-button');
+        var vid = document.querySelector('video');
+        if (ab && !vid) ab.click();                        // (re)open -> getUserMedia -> our armed stream
+        if (vid && vid.srcObject && !window.__rczPhotoStream) { clearInterval(poll); return; }  // consumed -> done
+        if (Date.now() - start > 6000) { clearInterval(poll); window.__rczPhotoStream = null; }  // give up; never leave the override armed
+      }, 150);
     };
     img.onerror = function () { URL.revokeObjectURL(url); };
     img.src = url;
@@ -2119,6 +2144,7 @@
   function boot() {
     injectGlobalStyle();
     injectStyle();
+    if (CFG.PHOTO_FILE_UPLOAD) installCameraOverride();   // patch getUserMedia early (pass-through until a file is armed)
     installBadgeLinkNav();
     installUndoCheckIn();
     render();
