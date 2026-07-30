@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Venue — ROLLER Check-in Cards + Member Photos
 // @namespace    venue.roller.checkin-cards
-// @version      5.110
+// @version      5.111
 // @description  Reformats the ROLLER POS booking check-in list into full-frame photo cards, surfaces member photos on load (no Verify click), alerts when a member has no photo, handles family memberships (best-effort photos + add-name prompt) and close/similar name matches.
 // @match        https://pos.roller.app/*
 // @match        https://*.roller.app/*
@@ -2112,7 +2112,9 @@
       if (document.querySelector('video')) closeCapture(); // if the real camera is open, close it so it reopens with our stream
       var start = Date.now();
       var poll = setInterval(function () {
-        var ab = cap.querySelector('button.image-capture__action-button');
+        // empty state has __action-button ("Click to take a photo"); a member who ALREADY has a photo has
+        // __edit-button (the "add_a_photo" pencil to replace it). Either one (re)opens the camera.
+        var ab = cap.querySelector('button.image-capture__action-button, button.image-capture__edit-button');
         var vid = document.querySelector('video');
         if (ab && !vid) ab.click();                        // (re)open -> getUserMedia -> our armed stream
         if (vid && vid.srcObject && !window.__rczPhotoStream) { clearInterval(poll); return; }  // consumed -> done
