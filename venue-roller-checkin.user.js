@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Venue — ROLLER Check-in Cards + Member Photos
 // @namespace    venue.roller.checkin-cards
-// @version      5.111
+// @version      5.112
 // @description  Reformats the ROLLER POS booking check-in list into full-frame photo cards, surfaces member photos on load (no Verify click), alerts when a member has no photo, handles family memberships (best-effort photos + add-name prompt) and close/similar name matches.
 // @match        https://pos.roller.app/*
 // @match        https://*.roller.app/*
@@ -2117,8 +2117,14 @@
         var ab = cap.querySelector('button.image-capture__action-button, button.image-capture__edit-button');
         var vid = document.querySelector('video');
         if (ab && !vid) ab.click();                        // (re)open -> getUserMedia -> our armed stream
-        if (vid && vid.srcObject && !window.__rczPhotoStream) { clearInterval(poll); return; }  // consumed -> done
-        if (Date.now() - start > 6000) { clearInterval(poll); window.__rczPhotoStream = null; }  // give up; never leave the override armed
+        // Camera now showing OUR stream with a real frame -> auto-press ROLLER's Capture so staff land on the
+        // grabbed still (our photo) and only have to hit Done. Without this they'd hit Done on the LIVE preview
+        // with nothing captured, and ROLLER discards it (reloads / "forgets" the photo).
+        if (vid && vid.videoWidth > 0 && !window.__rczPhotoStream) {
+          var capBtn = Array.prototype.filter.call(document.querySelectorAll('button'), function (b) { return /^\s*capture\s*$/i.test(b.textContent || ''); })[0];
+          if (capBtn) { capBtn.click(); clearInterval(poll); return; }
+        }
+        if (Date.now() - start > 8000) { clearInterval(poll); window.__rczPhotoStream = null; }  // give up; never leave the override armed
       }, 150);
     };
     img.onerror = function () { URL.revokeObjectURL(url); };
