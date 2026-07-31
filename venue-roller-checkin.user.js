@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Venue — ROLLER Check-in Cards + Member Photos
 // @namespace    venue.roller.checkin-cards
-// @version      5.117
+// @version      5.118
 // @description  Reformats the ROLLER POS booking check-in list into full-frame photo cards, surfaces member photos on load (no Verify click), alerts when a member has no photo, handles family memberships (best-effort photos + add-name prompt) and close/similar name matches.
 // @match        https://pos.roller.app/*
 // @match        https://*.roller.app/*
@@ -1222,27 +1222,31 @@
   // ROLLER would have printed. Prefer its dedicated classes; if those are ever renamed, fall back to
   // reading the times straight out of the .summary-detail text. Returns {time, dur} — dur only when it
   // really looks like a duration, so we never mistake a resource name ("The Museum") for one.
-  // Leaf-node text joined with SPACES. Plain textContent glues adjacent spans together ("9:00 am" + "2 hrs"
-  // -> "9:00 am2 hrs"), which destroys the \b word boundaries the patterns below rely on. Same leaf-walk
-  // membershipInfo() already uses.
-  function detailText(w) {
-    var host = w.querySelector('.summary-detail'); if (!host) return '';
+  // Leaf-node text joined with SPACES. Plain textContent glues adjacent spans together ("11:30 am" + "2 hrs"
+  // -> "11:30 am2 hrs"), which destroys the \b word boundaries the pattern below relies on. Same leaf-walk
+  // membershipInfo() already uses. Our own status band is skipped so we can never read back the time we
+  // just painted into it.
+  function leafText(host) {
+    if (!host) return '';
     var out = [];
     host.querySelectorAll('*').forEach(function (el) {
-      if (el.children.length) return;
+      if (el.children.length) return;                                   // leaves only
+      if (el.closest && el.closest('.rcz-status')) return;              // never our own output
       var t = (el.textContent || '').trim(); if (t) out.push(t);
     });
-    if (!out.length) out.push((host.textContent || '').trim());
     return out.join(' ').replace(/\s+/g, ' ');
   }
-  // Start time only. Dropping the duration also spares us guessing whether ROLLER's resource slot is
-  // holding "2 hrs" or a room name — nothing but a clock time is ever read now.
+  // WHERE ROLLER ACTUALLY KEEPS THE START TIME — probed on the live POS, and it is not where the class
+  // names suggest:
+  //     div.summary-detail-time > p.summary-detail__item--emphasis.summary-detail-flex-end
+  //                             > span.bip-dot-container          -> "11:30 am"
+  // Two traps this walked into before: .summary-detail-session-start holds the DURATION ("2 hrs"), not the
+  // start; and .summary-detail is a different block again ("MoPA: Free Play  Adult Sarah"), so searching it
+  // finds no time at all. Read the time block, and only fall back to the whole card if it's ever renamed.
   function sessionTimeOf(w) {
     var TIME = /\b\d{1,2}:\d{2}\s*(?:am|pm)\b/i;
-    var m = null;
-    var st = w.querySelector('.summary-detail-session-start');
-    if (st) m = (st.textContent || '').match(TIME);
-    if (!m) m = detailText(w).match(TIME);       // class renamed / absent -> read it out of the card text
+    var m = leafText(w.querySelector('.summary-detail-time')).match(TIME);
+    if (!m) m = leafText(w).match(TIME);
     return m ? m[0].replace(/\s+/g, ' ').trim() : '';
   }
   function statusTimeHtml(w) {
