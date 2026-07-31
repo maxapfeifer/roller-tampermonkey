@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Venue — ROLLER Check-in Cards + Member Photos
 // @namespace    venue.roller.checkin-cards
-// @version      5.115
+// @version      5.116
 // @description  Reformats the ROLLER POS booking check-in list into full-frame photo cards, surfaces member photos on load (no Verify click), alerts when a member has no photo, handles family memberships (best-effort photos + add-name prompt) and close/similar name matches.
 // @match        https://pos.roller.app/*
 // @match        https://*.roller.app/*
@@ -101,6 +101,16 @@
     // Costs nothing until an ADD PHOTO / link-through actually runs; then samples on a timer for 12s and
     // keeps the capture ONLY if it looks pathological. Read it back with rczTabTrace() in the console.
     TAB_TRACE:         true,
+    // Does a MISSING PHOTO block the shield? No — deliberately. We tell staff that a check-in WITHOUT a
+    // photo is what triggers the cancellation flag, so blocking the check-in outright made that warning
+    // describe something that could never happen, and left staff stuck with a guest in front of them.
+    // The prompts stay exactly as loud as they were; only the lock is lifted. A NAME mismatch still locks
+    // hard (see nameGate) — that one is a fraud signal, not an admin gap.
+    LOCK_ON_MISSING_PHOTO: false,
+    // Put ROLLER's per-ticket session start time back on the tile. Stock ROLLER prints it against every
+    // ticket; our full-frame redesign hid it along with the rest of .summary-detail. Staff need it —
+    // a booking can span sessions, and it's how they know who is due when.
+    SHOW_SESSION_TIME: true,
     // ---- membership search results ----
     SHOW_MEMBERSHIP:   true,  // format membership results (photo + "Membership Found" panel). false = leave as ROLLER draws them
     MEM_TITLE:         'Membership Found',
@@ -860,6 +870,14 @@
       'app-bip-summary.rcz-mem .summary__wrapper .rcz-actreq{bottom:106px !important;}',
       /* STATUS BAND — Name:/Photo: readout across the top of the tile (grey = fine, red = needs action) */
       '.rcz-status{position:absolute !important;top:0 !important;left:0 !important;right:0 !important;z-index:6 !important;pointer-events:none !important;background:rgba(255,255,255,.55) !important;-webkit-backdrop-filter:blur(6px) !important;backdrop-filter:blur(6px) !important;border-bottom:1px solid rgba(0,0,0,.07) !important;padding:8px 11px 5px 40px !important;font:400 12.5px/1.3 Roboto,Arial,sans-serif !important;color:#1f2933 !important;}',
+      /* band is a row: Name/Photo readout on the left, session time hard right */
+      '.rcz-status{display:flex !important;align-items:flex-start !important;justify-content:space-between !important;gap:10px !important;}',
+      '.rcz-status__main{min-width:0 !important;}',
+      '.rcz-status__time{flex:none !important;display:flex !important;flex-direction:column !important;align-items:flex-end !important;line-height:1.15 !important;}',
+      '.rcz-status__time b{font:700 15px/1.15 Roboto,Arial,sans-serif !important;color:#1f2933 !important;white-space:nowrap !important;}',
+      '.rcz-status__dur{font:400 11px/1.2 Roboto,Arial,sans-serif !important;color:#69727e !important;white-space:nowrap !important;}',
+      /* the birthday cake also parks top-right (z-index 7) — step the time aside when one is showing */
+      'app-bip-summary:not(.rcz-skip) .summary__wrapper:has(.rcz-bday) .rcz-status__time{margin-right:62px !important;}',
       '.rcz-status__row{display:flex !important;gap:4px !important;align-items:center !important;}',
       '.rcz-status__lbl{color:#1f2933 !important;}',
       '.rcz-status__ok{color:#1f2933 !important;}',
@@ -1200,12 +1218,55 @@
   }
   function clrMeaning(w) { var el = w.querySelector('.rcz-meaning'); if (el) el.remove(); }
   // STATUS BAND — top-of-tile Name:/Photo: readout. warn=true paints the value red (needs action).
+  // SESSION TIME — scraped off ROLLER's own card markup rather than recomputed, so it always matches what
+  // ROLLER would have printed. Prefer its dedicated classes; if those are ever renamed, fall back to
+  // reading the times straight out of the .summary-detail text. Returns {time, dur} — dur only when it
+  // really looks like a duration, so we never mistake a resource name ("The Museum") for one.
+  // Leaf-node text joined with SPACES. Plain textContent glues adjacent spans together ("9:00 am" + "2 hrs"
+  // -> "9:00 am2 hrs"), which destroys the \b word boundaries the patterns below rely on. Same leaf-walk
+  // membershipInfo() already uses.
+  function detailText(w) {
+    var host = w.querySelector('.summary-detail'); if (!host) return '';
+    var out = [];
+    host.querySelectorAll('*').forEach(function (el) {
+      if (el.children.length) return;
+      var t = (el.textContent || '').trim(); if (t) out.push(t);
+    });
+    if (!out.length) out.push((host.textContent || '').trim());
+    return out.join(' ').replace(/\s+/g, ' ');
+  }
+  function sessionTimeOf(w) {
+    var TIME = /\b\d{1,2}:\d{2}\s*(?:am|pm)\b/i;
+    var DUR  = /\b\d+(?:\.\d+)?\s*(?:hrs?|hours?|mins?|minutes?)\b/i;
+    var time = '', dur = '', m;
+    var st = w.querySelector('.summary-detail-session-start');
+    if (st) { m = (st.textContent || '').match(TIME); if (m) time = m[0]; }
+    // The resource slot holds a duration on some cards and a room name ("The Museum") on others — only
+    // take it when it actually parses as a duration.
+    var rs = w.querySelector('.summary-detail-session-resource');
+    if (rs) { m = (rs.textContent || '').match(DUR); if (m) dur = m[0]; }
+    if (!time || !dur) {
+      var all = detailText(w);
+      if (!time) { m = all.match(TIME); if (m) time = m[0]; }
+      if (!dur)  { m = all.match(DUR);  if (m) dur  = m[0]; }
+    }
+    return { time: time.replace(/\s+/g, ' ').trim(), dur: dur.replace(/\s+/g, ' ').trim() };
+  }
+  function statusTimeHtml(w) {
+    if (!CFG.SHOW_SESSION_TIME) return '';
+    var s = sessionTimeOf(w);
+    if (!s.time) return '';
+    return '<div class="rcz-status__time"><b>' + esc(s.time) + '</b>' +
+           (s.dur ? '<span class="rcz-status__dur">' + esc(s.dur) + '</span>' : '') + '</div>';
+  }
   function paintStatus(w, nm, nmW, ph, phW) {
     var el = w.querySelector('.rcz-status');
     if (!el) { el = document.createElement('div'); el.className = 'rcz-status'; w.appendChild(el); }
     function tk(v) { return (v === 'Matched' || v === 'Showing') ? '<span class="rcz-status__tick">✓</span>' : ''; }
-    var html = '<div class="rcz-status__row"><span class="rcz-status__lbl">Name:</span><span class="' + (nmW ? 'rcz-status__warn' : 'rcz-status__ok') + '">' + esc(nm) + '</span>' + tk(nm) + '</div>' +
-               '<div class="rcz-status__row"><span class="rcz-status__lbl">Photo:</span><span class="' + (phW ? 'rcz-status__warn' : 'rcz-status__ok') + '">' + esc(ph) + '</span>' + tk(ph) + '</div>';
+    var html = '<div class="rcz-status__main">' +
+               '<div class="rcz-status__row"><span class="rcz-status__lbl">Name:</span><span class="' + (nmW ? 'rcz-status__warn' : 'rcz-status__ok') + '">' + esc(nm) + '</span>' + tk(nm) + '</div>' +
+               '<div class="rcz-status__row"><span class="rcz-status__lbl">Photo:</span><span class="' + (phW ? 'rcz-status__warn' : 'rcz-status__ok') + '">' + esc(ph) + '</span>' + tk(ph) + '</div>' +
+               '</div>' + statusTimeHtml(w);
     if (el.getAttribute('data-h') !== html) { el.innerHTML = html; el.setAttribute('data-h', html); }
   }
   function clrStatus(w) { var el = w.querySelector('.rcz-status'); if (el) el.remove(); }
@@ -1214,7 +1275,9 @@
   function paintStatusEmpty(w) {
     var el = w.querySelector('.rcz-status');
     if (!el) { el = document.createElement('div'); el.className = 'rcz-status'; w.appendChild(el); }
-    var html = '<div class="rcz-status__row">&nbsp;</div><div class="rcz-status__row">&nbsp;</div>';
+    // Casual tiles carry no Name:/Photo: readout, but they DO get the session time — stock ROLLER shows it
+    // against every ticket, member or not, and it's the one fact staff need on a casual tile.
+    var html = '<div class="rcz-status__main"><div class="rcz-status__row">&nbsp;</div><div class="rcz-status__row">&nbsp;</div></div>' + statusTimeHtml(w);
     if (el.getAttribute('data-h') !== html) { el.innerHTML = html; el.setAttribute('data-h', html); }
   }
   // derive the Name:/Photo: status for a card from its detected scenario. Returns null while loading.
@@ -1610,7 +1673,10 @@
         // requirement; photo-ack (visiting handoff) hides ONLY the ADD PHOTO box. Each gate locks on its own.
         if (snoozedName(cardId)) { clrNameAct(w); clrMismatch(w); if (!photoGate(w, info)) clrActionReq(w); }
         if (snoozedPhoto(cardId)) clrActionReq(w);
-        w.classList.toggle('rcz-locked', !state.unlocked[cardId] && ((nameGate(info) && !snoozedName(cardId)) || (photoGate(w, info) && !snoozedPhoto(cardId))));
+        // A missing photo warns but no longer blocks (CFG.LOCK_ON_MISSING_PHOTO) — staff must be able to
+        // check a member in and let the documented cancellation flag do its job. A NAME issue still locks.
+        var _photoLock = CFG.LOCK_ON_MISSING_PHOTO && photoGate(w, info) && !snoozedPhoto(cardId);
+        w.classList.toggle('rcz-locked', !state.unlocked[cardId] && ((nameGate(info) && !snoozedName(cardId)) || _photoLock));
         // name-mismatch tiles: replace the type+name at bottom-right with the Booking/Membership comparison
         var _mmn = mismatchNamesFor(w, info, cardId);
         if (_mmn) addMismatchNames(w, _mmn.t, _mmn.m); else clrMismatchNames(w);
