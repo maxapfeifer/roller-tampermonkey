@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Venue — ROLLER Check-in Cards + Member Photos
 // @namespace    venue.roller.checkin-cards
-// @version      5.116
+// @version      5.117
 // @description  Reformats the ROLLER POS booking check-in list into full-frame photo cards, surfaces member photos on load (no Verify click), alerts when a member has no photo, handles family memberships (best-effort photos + add-name prompt) and close/similar name matches.
 // @match        https://pos.roller.app/*
 // @match        https://*.roller.app/*
@@ -873,9 +873,9 @@
       /* band is a row: Name/Photo readout on the left, session time hard right */
       '.rcz-status{display:flex !important;align-items:flex-start !important;justify-content:space-between !important;gap:10px !important;}',
       '.rcz-status__main{min-width:0 !important;}',
-      '.rcz-status__time{flex:none !important;display:flex !important;flex-direction:column !important;align-items:flex-end !important;line-height:1.15 !important;}',
+      /* single line, so centre it against the two-row readout rather than letting it ride the top edge */
+      '.rcz-status__time{flex:none !important;align-self:center !important;}',
       '.rcz-status__time b{font:700 15px/1.15 Roboto,Arial,sans-serif !important;color:#1f2933 !important;white-space:nowrap !important;}',
-      '.rcz-status__dur{font:400 11px/1.2 Roboto,Arial,sans-serif !important;color:#69727e !important;white-space:nowrap !important;}',
       /* the birthday cake also parks top-right (z-index 7) — step the time aside when one is showing */
       'app-bip-summary:not(.rcz-skip) .summary__wrapper:has(.rcz-bday) .rcz-status__time{margin-right:62px !important;}',
       '.rcz-status__row{display:flex !important;gap:4px !important;align-items:center !important;}',
@@ -1235,29 +1235,20 @@
     if (!out.length) out.push((host.textContent || '').trim());
     return out.join(' ').replace(/\s+/g, ' ');
   }
+  // Start time only. Dropping the duration also spares us guessing whether ROLLER's resource slot is
+  // holding "2 hrs" or a room name — nothing but a clock time is ever read now.
   function sessionTimeOf(w) {
     var TIME = /\b\d{1,2}:\d{2}\s*(?:am|pm)\b/i;
-    var DUR  = /\b\d+(?:\.\d+)?\s*(?:hrs?|hours?|mins?|minutes?)\b/i;
-    var time = '', dur = '', m;
+    var m = null;
     var st = w.querySelector('.summary-detail-session-start');
-    if (st) { m = (st.textContent || '').match(TIME); if (m) time = m[0]; }
-    // The resource slot holds a duration on some cards and a room name ("The Museum") on others — only
-    // take it when it actually parses as a duration.
-    var rs = w.querySelector('.summary-detail-session-resource');
-    if (rs) { m = (rs.textContent || '').match(DUR); if (m) dur = m[0]; }
-    if (!time || !dur) {
-      var all = detailText(w);
-      if (!time) { m = all.match(TIME); if (m) time = m[0]; }
-      if (!dur)  { m = all.match(DUR);  if (m) dur  = m[0]; }
-    }
-    return { time: time.replace(/\s+/g, ' ').trim(), dur: dur.replace(/\s+/g, ' ').trim() };
+    if (st) m = (st.textContent || '').match(TIME);
+    if (!m) m = detailText(w).match(TIME);       // class renamed / absent -> read it out of the card text
+    return m ? m[0].replace(/\s+/g, ' ').trim() : '';
   }
   function statusTimeHtml(w) {
     if (!CFG.SHOW_SESSION_TIME) return '';
-    var s = sessionTimeOf(w);
-    if (!s.time) return '';
-    return '<div class="rcz-status__time"><b>' + esc(s.time) + '</b>' +
-           (s.dur ? '<span class="rcz-status__dur">' + esc(s.dur) + '</span>' : '') + '</div>';
+    var t = sessionTimeOf(w);
+    return t ? '<div class="rcz-status__time"><b>' + esc(t) + '</b></div>' : '';
   }
   function paintStatus(w, nm, nmW, ph, phW) {
     var el = w.querySelector('.rcz-status');
