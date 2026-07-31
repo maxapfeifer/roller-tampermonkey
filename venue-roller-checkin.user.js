@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Venue — ROLLER Check-in Cards + Member Photos
 // @namespace    venue.roller.checkin-cards
-// @version      5.114
+// @version      5.115
 // @description  Reformats the ROLLER POS booking check-in list into full-frame photo cards, surfaces member photos on load (no Verify click), alerts when a member has no photo, handles family memberships (best-effort photos + add-name prompt) and close/similar name matches.
 // @match        https://pos.roller.app/*
 // @match        https://*.roller.app/*
@@ -1519,12 +1519,14 @@
           var tk = esc(info.ticketName || 'this guest');
           var note = esc(CFG.MISMATCH_NOTE_TMPL).split('{MEMBER}').join(mem).split('{TICKET}').join(tk);
           clrMismatch(w); addMismatchBox(w, cardId, info.ticketName); clrAlert(w); clrCasual(w); clrVisiting(w); clrNote(w); if (info.tier) addBadge(w, info.tier, memHref(info, cardId), info.visiting); else clrBadge(w);
-        } else if (info && !info.pending && info.visiting) {
-          // visiting overlay dropped from the redesign — a visiting member with no photo is treated
-          // like any other no-photo member (standard "requires photo" alert), no "visiting" banner.
-          if (img) img.remove();
-          clrAlert(w); clrCasual(w); clrMismatch(w); clrVisiting(w); clrNote(w); addActionReq(w, cardId, memberActions(w, info, cardId, false)); if (info.tier) addBadge(w, info.tier, memHref(info, cardId), info.visiting); else clrBadge(w);
         } else if (info && !info.pending && info.member) {
+          // NOTE: visiting members (visiting from another museum) deliberately fall through to here rather
+          // than having their own branch. They used to be handled above with hasPhoto hard-coded to false,
+          // which meant no amount of photo-taking could ever satisfy the prompt: their membership lives at
+          // another venue, so our /get-membership lookup returns no imageFileName, and the photo staff take
+          // lands on the TICKET instead. The nativePhotoImg() check below is exactly the fix for that — it
+          // reads the photo ROLLER itself is rendering. The old branch was character-for-character identical
+          // to the no-photo path below, so nothing changes for a visiting member who genuinely has no photo.
           var np = nativePhotoImg(btn);
           if (np) {
             // our membership lookup returned no photo, but ROLLER is already showing a real photo for this
@@ -1534,7 +1536,10 @@
             if (!img) { img = document.createElement('img'); img.className = 'rcz-photo'; img.alt = ''; btn.appendChild(img); }
             var nsrc = np.getAttribute('src');
             if (img.getAttribute('src') !== nsrc) img.setAttribute('src', nsrc);
-            var pmn = (info.family || info.closematch || info.misaligned || info.paidMember) ? null : pillMismatchCheck(w, cardId);
+            // ...and never name-check a VISITING member: their blue pill carries a membership ID, not a
+            // name, so pillFirsts holds an ID that no ticket-holder can ever match — every visiting member
+            // with a photo would be branded an interloper. Nothing to compare, so don't compare.
+            var pmn = (info.family || info.closematch || info.misaligned || info.paidMember || info.visiting) ? null : pillMismatchCheck(w, cardId);
             if (pmn) {
               showMismatch(w, btn, icon, img, cardId, pmn.memberName, pmn.ticketName, info.tier);
             } else {
