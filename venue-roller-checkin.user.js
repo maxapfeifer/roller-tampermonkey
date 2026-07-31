@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Venue — ROLLER Check-in Cards + Member Photos
 // @namespace    venue.roller.checkin-cards
-// @version      5.124
+// @version      5.125
 // @description  Reformats the ROLLER POS booking check-in list into full-frame photo cards, surfaces member photos on load (no Verify click), alerts when a member has no photo, handles family memberships (best-effort photos + add-name prompt) and close/similar name matches.
 // @match        https://pos.roller.app/*
 // @match        https://*.roller.app/*
@@ -351,6 +351,12 @@
       discs.forEach(function (d) {
         d.unnamed = !d.name || (d.r != null && nameCountByR[d.r][d.name] >= 2);
       });
+      // A discount that references no membership at all — no member slot id (b), no receipt (r) and no member
+      // name — is a MANUAL / ad-hoc discount (e.g. a $16 goodwill discount at the desk). It must NOT be matched
+      // to a ticket and turn a plain guest into a member/visiting, so mark it used up-front to keep it out of
+      // the name/amount matching below. Real memberships — including visiting members (they fetch their photo
+      // via b/r) — always carry a slot id and/or a receipt, so this only removes genuinely non-membership discounts.
+      discs.forEach(function (d) { if (d.b == null && d.r == null && !d.name) d.used = true; });
       var next = {}, toFetch = [];
       state.discountIndex = {};
       // A ticket is a MEMBER check-in when it carries a membership discount (bookingItemDiscount != 0).
@@ -393,6 +399,7 @@
           // membership whose amount matches — so we can NAME the real member (Bronte) rather than say
           // "another member" — and still flag it, because the discount is being used by someone else.
           var src = discs.find(function (x) { return x.name && x.amount != null && Number(x.amount) === Number(p.bookingItemDiscount); }) || discs.find(function (x) { return x.name; });
+          if (!src) { next[cardId] = { member: false, pending: false, photo: null }; return; }  // only a manual/ad-hoc discount on this ticket (no membership to attribute) -> plain casual guest
           next[cardId] = { member: true, mismatch: true, unmapped: true, pending: false, photo: null,
             tier: src ? ((src.pct === 100) ? 'gold' : 'wonder') : null,
             memberName: src ? proper(firstName(src.raw)) : '', memberFull: src ? (src.raw || '') : '',
