@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Venue — ROLLER Check-in Cards + Member Photos
 // @namespace    venue.roller.checkin-cards
-// @version      5.119
+// @version      5.120
 // @description  Reformats the ROLLER POS booking check-in list into full-frame photo cards, surfaces member photos on load (no Verify click), alerts when a member has no photo, handles family memberships (best-effort photos + add-name prompt) and close/similar name matches.
 // @match        https://pos.roller.app/*
 // @match        https://*.roller.app/*
@@ -293,8 +293,16 @@
     if (!a || !b) return false;
     if (a === b) return true;
     var s = a.length <= b.length ? a : b, l = a.length <= b.length ? b : a;
-    if (s.length >= 2 && l.indexOf(s) === 0) return true;
-    if (s.length >= 4 && editDistance(a, b) <= 1) return true;
+    if (s.length >= 2 && l.indexOf(s) === 0) return true;               // one name is a clean prefix of the other (Sam/Samuel, Jo/John)
+    if (s.length >= 4 && editDistance(a, b) <= 1) return true;          // single-letter typo (Flyn/Flynn, Aliya/Aliyah)
+    // Nickname / abbreviation tolerance: two names that share their first 3 letters are treated as the SAME
+    // person — this catches nicknames that alter a letter off the stem (Bree/Breanna, Kate/Katrina, Nat/Natalie)
+    // which the prefix + typo rules miss. DELIBERATELY BROAD: it can't tell a real nickname from a coincidental
+    // shared syllable, so it also matches genuinely-different same-stem names (Bree/Brendan, Mark/Margaret,
+    // Nathan/Natalie, Michael/Michelle). That's an accepted trade — fewer false mismatch flags on legit
+    // nicknames, at the cost of missing mismatches that share a first syllable. Only fires when the shorter
+    // name is >=3 chars, so 2-letter names still rely on the exact-prefix rule above.
+    if (s.length >= 3 && a.slice(0, 3) === b.slice(0, 3)) return true;
     return false;
   }
   var MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
