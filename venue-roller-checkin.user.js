@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Venue — ROLLER Check-in Cards + Member Photos
 // @namespace    venue.roller.checkin-cards
-// @version      5.125
+// @version      5.126
 // @description  Reformats the ROLLER POS booking check-in list into full-frame photo cards, surfaces member photos on load (no Verify click), alerts when a member has no photo, handles family memberships (best-effort photos + add-name prompt) and close/similar name matches.
 // @match        https://pos.roller.app/*
 // @match        https://*.roller.app/*
@@ -102,6 +102,11 @@
     // Costs nothing until an ADD PHOTO / link-through actually runs; then samples on a timer for 12s and
     // keeps the capture ONLY if it looks pathological. Read it back with rczTabTrace() in the console.
     TAB_TRACE:         true,
+    // Auto-navigate staff to the Guest tab (and pre-open the camera) after an ADD PHOTO / link-through.
+    // OFF for now: ROLLER re-flips the tab on its own whenever our script touches it, so we've stopped
+    // fighting it — the detail page just lands where ROLLER puts it (usually the Membership tab) and staff
+    // click the Guest tab + the Capture button themselves. Flip back to true to restore the auto flow.
+    AUTO_GUEST_TAB:    false,
     // Does a MISSING PHOTO block the shield? No — deliberately. We tell staff that a check-in WITHOUT a
     // photo is what triggers the cancellation flag, so blocking the check-in outright made that warning
     // describe something that could never happen, and left staff stuck with a guest in front of them.
@@ -1830,6 +1835,7 @@
   // ROLLER's tab resets. With withCamera, once Guest is stable a beat we pre-click ROLLER's "Click to take a
   // photo" tile so staff land straight on the live camera — the whole flippy journey hidden behind the cover.
   function openGuestTabSoon(withCamera) {
+    if (!CFG.AUTO_GUEST_TAB) return;   // stopped fighting ROLLER's tabs: no tab-push, no auto-camera, no cover — staff pick the Guest tab + Capture themselves
     if (_guestTabIv) { clearInterval(_guestTabIv); _guestTabIv = null; }  // never run two overlapping loops
     // Unhook the PREVIOUS run's pointerdown listener. Clearing the interval above never removed it, so it
     // stayed attached for the rest of the session. On the next member a leftover listener still fires, judges
