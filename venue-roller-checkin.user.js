@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Venue — ROLLER Check-in Cards + Member Photos
 // @namespace    venue.roller.checkin-cards
-// @version      5.123
+// @version      5.124
 // @description  Reformats the ROLLER POS booking check-in list into full-frame photo cards, surfaces member photos on load (no Verify click), alerts when a member has no photo, handles family memberships (best-effort photos + add-name prompt) and close/similar name matches.
 // @match        https://pos.roller.app/*
 // @match        https://*.roller.app/*
@@ -47,7 +47,8 @@
     FLAG_MISASSIGNED: false,  // OFF: a discount mis-assignment where the real member IS on the booking shows nothing (normal member). Set true to restore the "MEMBERSHIP DISCOUNT MIS-ASSIGNED" reassurance note.
     WARN_HEADING:     'WARNING: MISSING DATA',                   // ACTION REQUIRED banner big heading (missing-data / ADD PHOTO box only)
     WARN_SUB:         'COMPLETE MEMBER PROFILE TO AVOID CANCELLATION',  // ACTION REQUIRED banner sub-line
-    MISMATCH_ACTREQ_HD: "FRAUD WARNING: NAME ON MEMBERSHIP DOESN'T MATCH NAME ON TICKET", // heading on the name-mismatch action box (no sub-line)
+    MISMATCH_ACTREQ_HD: 'FRAUD FLAG: NAME MISMATCH',              // heading on the name-mismatch action box
+    MISMATCH_ACTREQ_SUB: 'PLEASE CHECK PHOTO EXTRA CAREFULLY',    // sub-line on the name-mismatch action box
     // Age-type icons for casual/foster tiles (infant/child/adult), by ticket type. Populated with data:URIs
     // just below the CFG block (kept out of the literal so the base64 blobs don't clutter the config).
     AGE_ICONS:        {},
@@ -1361,10 +1362,11 @@
   // "ADD A TICKET FOR <NAME>" button. X carries data-rcz-act="nickname" (old PASS NICKNAME: dismiss + unlock);
   // the button carries data-rcz-act="addticket" (old ADD TICKET: fire Add items + dismiss + unlock). The
   // existing click handler drives both, so no behaviour changes — only the presentation.
-  function mmBoxInner(cardId, ticketName) {
+  function mmBoxInner(cardId, ticketName, withSub) {
     var nm = String(ticketName || '').toUpperCase();
     return '<a href="#" class="rcz-mmx" data-rcz-unlock="' + esc(cardId) + '" data-rcz-act="nickname" title="Dismiss">×</a>' +
            '<div class="rcz-actreq__hd">' + esc(CFG.MISMATCH_ACTREQ_HD) + '</div>' +
+           (withSub ? '<div class="rcz-actreq__sub">' + esc(CFG.MISMATCH_ACTREQ_SUB) + '</div>' : '') +
            '<div class="rcz-actreq__links"><a href="#" class="rcz-mmbtn" data-rcz-unlock="' + esc(cardId) + '" data-rcz-act="addticket">ADD A TICKET FOR ' + esc(nm) + '</a></div>';
   }
   // main name-mismatch box (photo tiles + no-photo hard mismatch): the frosted .rcz-actreq--mm
@@ -1372,7 +1374,7 @@
     var el = w.querySelector('.rcz-actreq');
     if (!el) { el = document.createElement('div'); el.className = 'rcz-actreq'; w.appendChild(el); }
     if (el.className !== 'rcz-actreq rcz-actreq--mm') el.className = 'rcz-actreq rcz-actreq--mm';
-    var html = mmBoxInner(cardId, ticketName);
+    var html = mmBoxInner(cardId, ticketName, true);   // hard-mismatch box gets the "check photo" sub-line
     if (el.getAttribute('data-h') !== html) { el.innerHTML = html; el.setAttribute('data-h', html); }
   }
   // stacked name-mismatch box for a no-photo close-match (sits above the ADD PHOTO box)
