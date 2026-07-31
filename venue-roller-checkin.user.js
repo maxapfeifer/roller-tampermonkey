@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Venue — ROLLER Check-in Cards + Member Photos
 // @namespace    venue.roller.checkin-cards
-// @version      5.113
+// @version      5.114
 // @description  Reformats the ROLLER POS booking check-in list into full-frame photo cards, surfaces member photos on load (no Verify click), alerts when a member has no photo, handles family memberships (best-effort photos + add-name prompt) and close/similar name matches.
 // @match        https://pos.roller.app/*
 // @match        https://*.roller.app/*
@@ -96,6 +96,11 @@
     // button — which on a membership RE-CHECKS THEM IN instead of undoing, so only turn it off when
     // deliberately comparing against stock behaviour.
     UNDO_CHECKIN:      true,
+    // Record the Guest/Membership tab flip-flop when it happens. It's intermittent and has resisted being
+    // reproduced on demand, so rather than ask staff to paste console snippets, capture it in the field.
+    // Costs nothing until an ADD PHOTO / link-through actually runs; then samples on a timer for 12s and
+    // keeps the capture ONLY if it looks pathological. Read it back with rczTabTrace() in the console.
+    TAB_TRACE:         true,
     // ---- membership search results ----
     SHOW_MEMBERSHIP:   true,  // format membership results (photo + "Membership Found" panel). false = leave as ROLLER draws them
     MEM_TITLE:         'Membership Found',
@@ -1642,6 +1647,76 @@
   // membership detail renders async after the soft nav, so poll for ROLLER's Guest tab (a stable id) and
   // click it once it's present + wired. Stop as soon as it's selected (so we never fight a manual switch),
   // or after a short timeout if it never appears. Tabs: Guest = bip-detail-tab-customer, Membership = ...-ticket.
+  /* ---------------------------------------------------------------------
+     TAB-FLICKER RECORDER
+     Built around what was actually measured on the live POS (2026-07-31):
+     our loop clicks Guest ONCE and stops, and ROLLER then flips the tab 100+
+     times with nobody clicking — while the SAME single click with this script
+     disabled is stable at any timing. So the number that matters is how many
+     transitions land AFTER our loop has stopped: that separates "we're
+     hammering the tab" from "we poked it once and it went unstable by itself".
+
+     Deliberately NOT another MutationObserver — an extra observer is more of
+     exactly what we suspect provokes Angular's change detection. This samples
+     on a timer, only while a switch is in progress, and then stops.
+     --------------------------------------------------------------------- */
+  var TAB_TRACE_KEY = 'rcz-tabtrace';
+  var SCRIPT_VERSION = (function () { try { return GM_info.script.version; } catch (e) { return 'unknown'; } })();
+  function selectedTabName() {
+    var g = document.getElementById('bip-detail-tab-customer');
+    if (g && g.getAttribute('aria-selected') === 'true') return 'Guest';
+    var m = document.getElementById('bip-detail-tab-ticket');
+    if (m && m.getAttribute('aria-selected') === 'true') return 'Membership';
+    return null;
+  }
+  function newTabTrace(withCamera) {
+    return { version: SCRIPT_VERSION, at: new Date().toISOString(), path: location.pathname,
+             withCamera: !!withCamera, clicks: 0, flips: [], flipCount: 0, flipsAfterStop: 0, stoppedAt: null };
+  }
+  function watchTabFlicker(trace) {
+    if (!CFG.TAB_TRACE) return;
+    var t0 = Date.now(), last = selectedTabName();
+    var iv = setInterval(function () {
+      try {
+        var ms = Date.now() - t0, cur = selectedTabName();
+        if (cur !== last) {
+          last = cur; trace.flipCount++;
+          if (trace.stoppedAt != null) trace.flipsAfterStop++;
+          if (trace.flips.length < 60) {
+            trace.flips.push(ms + 'ms -> ' + (cur || 'none') + (trace.stoppedAt != null ? '  [after our loop stopped]' : ''));
+          }
+        }
+        if (ms > 12000) { clearInterval(iv); saveTabTrace(trace); }
+      } catch (e) { clearInterval(iv); }
+    }, 150);
+  }
+  function saveTabTrace(trace) {
+    if (trace.flipCount < 12) return;                 // a healthy switch is 1-3 transitions; ignore those
+    trace.verdict = trace.flipsAfterStop > 6
+      ? 'ROLLER kept flipping AFTER our loop stopped -> trigger is our presence, not our clicking'
+      : 'flips happened while our loop was still running -> we may be hammering the tab';
+    try { localStorage.setItem(TAB_TRACE_KEY, JSON.stringify(trace)); } catch (e) {}
+    try { console.warn('[rcz] Guest-tab flicker captured — run rczTabTrace() to print it'); } catch (e) {}
+  }
+  // Console accessor, so a venue can hand us the capture from any later session with one command.
+  try {
+    window.rczTabTrace = function () {
+      var raw = null; try { raw = localStorage.getItem(TAB_TRACE_KEY); } catch (e) {}
+      if (!raw) { console.log('[rcz] no flicker captured yet'); return null; }
+      var t = JSON.parse(raw);
+      console.log('[rcz] Guest-tab flicker capture\n' + [
+        'script version   : ' + t.version,
+        'when             : ' + t.at,
+        'path             : ' + t.path,
+        'withCamera       : ' + t.withCamera,
+        'clicks WE issued : ' + t.clicks,
+        'tab changes      : ' + t.flipCount + '   (after our loop stopped: ' + t.flipsAfterStop + ')',
+        'our loop stopped : ' + (t.stoppedAt == null ? 'never — ran to its cap' : t.stoppedAt + 'ms in'),
+        'verdict          : ' + t.verdict, '', t.flips.join('\n')].join('\n'));
+      return t;
+    };
+  } catch (e) {}
+
   var _guestTabIv = null;     // module-level so two link-throughs can never run overlapping switch loops
   var _guestTabRun = 0;       // generation counter — only the CURRENT run may stop the loop or drop the cover
   var _guestTabOnUser = null; // the live run's pointerdown listener, so a new run can unhook the old one
@@ -1672,10 +1747,13 @@
     if (_guestTabOnUser) { document.removeEventListener('pointerdown', _guestTabOnUser, true); _guestTabOnUser = null; }
     var myRun = ++_guestTabRun;
     var start = Date.now(), lastClick = 0, guestSince = 0, camDone = false;
+    var trace = newTabTrace(withCamera);
+    watchTabFlicker(trace);
     if (withCamera) photoCover(true);
     // Belt and braces on the same hazard: a superseded run must never tear down a newer one's state.
     function stop() {
       if (myRun !== _guestTabRun) return;                                  // superseded — not ours to stop
+      if (trace.stoppedAt == null) trace.stoppedAt = Date.now() - start;   // recorder: everything after this is ROLLER's doing
       if (_guestTabIv) { clearInterval(_guestTabIv); _guestTabIv = null; }
       document.removeEventListener('pointerdown', onUser, true);
       if (_guestTabOnUser === onUser) _guestTabOnUser = null;
@@ -1701,7 +1779,7 @@
             // Not on Guest (initial load, or ROLLER flipped us back). Re-select it — rate-limited to ~450ms
             // so we never hammer (each click re-triggers ROLLER's async tab load, which is the flicker).
             guestSince = 0;
-            if (Date.now() - lastClick > 450) { g.click(); lastClick = Date.now(); }
+            if (Date.now() - lastClick > 450) { g.click(); trace.clicks++; lastClick = Date.now(); }
           } else if (!withCamera) {
             stop(); return;                                   // plain nav: on Guest, done
           } else {
@@ -1712,7 +1790,7 @@
             if (stableFor > 700) {
               var cam = document.querySelector('button.image-capture__action-button');
               // open the capture (retry if a late ROLLER reset closed it); rate-limited
-              if (cam) { if (Date.now() - lastClick > 450) { cam.click(); lastClick = Date.now(); camDone = true; } }
+              if (cam) { if (Date.now() - lastClick > 450) { cam.click(); trace.clicks++; lastClick = Date.now(); camDone = true; } }
               // stable a good while with no camera control at all (e.g. member already has a photo) -> nothing
               // to capture; reveal what's there rather than sit behind the cover.
               else if (stableFor > 2200) { toMembershipAndStop(); return; }
