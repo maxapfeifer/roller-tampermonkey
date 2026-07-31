@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Venue — ROLLER Check-in Cards + Member Photos
 // @namespace    venue.roller.checkin-cards
-// @version      5.118
+// @version      5.119
 // @description  Reformats the ROLLER POS booking check-in list into full-frame photo cards, surfaces member photos on load (no Verify click), alerts when a member has no photo, handles family memberships (best-effort photos + add-name prompt) and close/similar name matches.
 // @match        https://pos.roller.app/*
 // @match        https://*.roller.app/*
@@ -876,8 +876,8 @@
       /* single line, so centre it against the two-row readout rather than letting it ride the top edge */
       '.rcz-status__time{flex:none !important;align-self:center !important;}',
       '.rcz-status__time b{font:700 15px/1.15 Roboto,Arial,sans-serif !important;color:#1f2933 !important;white-space:nowrap !important;}',
-      /* the birthday cake also parks top-right (z-index 7) — step the time aside when one is showing */
-      'app-bip-summary:not(.rcz-skip) .summary__wrapper:has(.rcz-bday) .rcz-status__time{margin-right:62px !important;}',
+      /* NB: no margin hack for the birthday cake here — it's dropped below the band instead (see bdayTop),
+         which is self-adjusting rather than a magic number that breaks when the band changes height. */
       '.rcz-status__row{display:flex !important;gap:4px !important;align-items:center !important;}',
       '.rcz-status__lbl{color:#1f2933 !important;}',
       '.rcz-status__ok{color:#1f2933 !important;}',
@@ -1209,6 +1209,17 @@
     if (el.getAttribute('data-h') !== html) { el.innerHTML = html; el.setAttribute('data-h', html); }
   }
   function clrBirthday(w) { var el = w.querySelector('.rcz-bday'); if (el) el.remove(); }
+  // Where the cake's top edge goes. It's absolutely positioned top-right, so it has to be pushed clear of
+  // whatever else is already up there — MEASURED, not guessed, because these things change height with
+  // their content. Priority: a note banner (close-match / family) if present, else the status band, which
+  // now carries the session time hard-right and is exactly what the cake was landing on top of.
+  function bdayTop(w) {
+    var nb = w.querySelector('.rcz-note');
+    if (nb && nb.offsetHeight) return (nb.offsetHeight + 10) + 'px';
+    var sb = w.querySelector('.rcz-status');
+    if (sb && sb.offsetHeight) return (sb.offsetHeight + 8) + 'px';
+    return '12px';
+  }
   function addMeaning(w, text) {
     var label = w.querySelector('.summary-detail'); if (!label) return;
     var el = label.querySelector('.rcz-meaning');
@@ -1478,7 +1489,7 @@
     // Birthday flag — top-right, same as ticket cards
     var memCardId = btn ? btn.id.replace('booking-details-button-', '') : null;
     var mbm = memCardId ? state.birthdays[memCardId] : null;
-    if (CFG.SHOW_BIRTHDAY && mbm && birthdayInWindow(mbm)) { addBirthday(w, mbm); var mbd = w.querySelector('.rcz-bday'); if (mbd) mbd.style.top = '12px'; }
+    if (CFG.SHOW_BIRTHDAY && mbm && birthdayInWindow(mbm)) { addBirthday(w, mbm); var mbd = w.querySelector('.rcz-bday'); if (mbd) mbd.style.top = bdayTop(w); }
     else clrBirthday(w);
   }
   function addMemInfo(w, startStr, endStr, uses) {
@@ -1680,10 +1691,8 @@
         var bm = state.birthdays[cardId];
         if (CFG.SHOW_BIRTHDAY && bm && birthdayInWindow(bm)) {
           addBirthday(w, bm);
-          // keep it top-right, but if a top note banner (close-match / family) is present, drop the
-          // cake to just below the banner so the two never overlap.
-          var bd = w.querySelector('.rcz-bday'), nb = w.querySelector('.rcz-note');
-          if (bd) bd.style.top = (nb && nb.offsetHeight) ? (nb.offsetHeight + 10) + 'px' : '12px';
+          var bd = w.querySelector('.rcz-bday');
+          if (bd) bd.style.top = bdayTop(w);
         } else clrBirthday(w);
         if (CFG.SHOW_NAME_MEANING) {
           var lnm = ((w.querySelector('.summary-detail__item-holder-wrapper') || {}).textContent || '');
