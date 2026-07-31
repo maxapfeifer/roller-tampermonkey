@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Venue — ROLLER Check-in Cards + Member Photos
 // @namespace    venue.roller.checkin-cards
-// @version      5.120
+// @version      5.121
 // @description  Reformats the ROLLER POS booking check-in list into full-frame photo cards, surfaces member photos on load (no Verify click), alerts when a member has no photo, handles family memberships (best-effort photos + add-name prompt) and close/similar name matches.
 // @match        https://pos.roller.app/*
 // @match        https://*.roller.app/*
@@ -911,7 +911,7 @@
       /* NAME-action box (fix #1): a second frosted card, identical style, stacked ABOVE the ADD PHOTO box on a
          no-photo close/mismatch tile. Its bottom is set in JS to clear the box below it. Reuses __hd/__links. */
       '.rcz-nameact{position:absolute !important;left:8px !important;right:8px !important;bottom:168px !important;z-index:6 !important;pointer-events:none !important;container-type:inline-size !important;background:rgba(255,255,255,.86) !important;-webkit-backdrop-filter:blur(4px) !important;backdrop-filter:blur(4px) !important;border-radius:13px !important;padding:12px 12px 13px !important;box-shadow:0 3px 12px rgba(0,0,0,.18) !important;text-align:center !important;}',
-      '.rcz-actreq__hd{font-family:Roboto,Arial,sans-serif !important;font-weight:800 !important;font-size:min(23px,6.5cqw) !important;line-height:1.12 !important;white-space:normal !important;letter-spacing:.01em !important;color:#e5231b !important;}',
+      '.rcz-actreq__hd{font-family:Roboto,Arial,sans-serif !important;font-weight:800 !important;font-size:min(18px,5cqw) !important;line-height:1.15 !important;white-space:nowrap !important;letter-spacing:0 !important;color:#e5231b !important;}',
       '.rcz-actreq__sub{font-family:Roboto,Arial,sans-serif !important;font-weight:700 !important;font-size:min(15px,4.1cqw) !important;line-height:1.25 !important;white-space:nowrap !important;letter-spacing:.02em !important;color:#a12a20 !important;margin-top:5px !important;}',
       '.rcz-actreq__links{display:flex !important;gap:10px !important;align-items:center !important;justify-content:center !important;margin-top:8px !important;flex-wrap:wrap !important;}',
       '.rcz-actreq a,.rcz-nameact a,.rcz-addlink{color:#2f6fed !important;text-decoration:underline !important;text-underline-offset:2px !important;pointer-events:auto !important;cursor:pointer !important;font:700 12px/1 Roboto,Arial,sans-serif !important;}',
