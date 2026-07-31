@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Venue — ROLLER Check-in Cards + Member Photos
 // @namespace    venue.roller.checkin-cards
-// @version      5.112
+// @version      5.113
 // @description  Reformats the ROLLER POS booking check-in list into full-frame photo cards, surfaces member photos on load (no Verify click), alerts when a member has no photo, handles family memberships (best-effort photos + add-name prompt) and close/similar name matches.
 // @match        https://pos.roller.app/*
 // @match        https://*.roller.app/*
@@ -1642,7 +1642,9 @@
   // membership detail renders async after the soft nav, so poll for ROLLER's Guest tab (a stable id) and
   // click it once it's present + wired. Stop as soon as it's selected (so we never fight a manual switch),
   // or after a short timeout if it never appears. Tabs: Guest = bip-detail-tab-customer, Membership = ...-ticket.
-  var _guestTabIv = null;   // module-level so two link-throughs can never run overlapping switch loops
+  var _guestTabIv = null;     // module-level so two link-throughs can never run overlapping switch loops
+  var _guestTabRun = 0;       // generation counter — only the CURRENT run may stop the loop or drop the cover
+  var _guestTabOnUser = null; // the live run's pointerdown listener, so a new run can unhook the old one
   // Full-screen "Opening camera…" cover. ROLLER re-asserts its default Membership tab several times in the
   // first ~3s of load, so getting to the Guest tab + camera involves visible tab flip-flop ("glitchy"). We
   // hide that whole journey behind this cover and only lift it once the live camera is actually up.
@@ -1662,9 +1664,23 @@
   // photo" tile so staff land straight on the live camera — the whole flippy journey hidden behind the cover.
   function openGuestTabSoon(withCamera) {
     if (_guestTabIv) { clearInterval(_guestTabIv); _guestTabIv = null; }  // never run two overlapping loops
+    // Unhook the PREVIOUS run's pointerdown listener. Clearing the interval above never removed it, so it
+    // stayed attached for the rest of the session. On the next member a leftover listener still fires, judges
+    // the page by ITS OWN (stale) withCamera mode, and calls ITS stop() — which clears _guestTabIv, by then
+    // the CURRENT run's interval, and lifts the CURRENT run's cover. Leftovers accumulate one per ADD PHOTO,
+    // which is why later members on the same booking behaved worse than the first.
+    if (_guestTabOnUser) { document.removeEventListener('pointerdown', _guestTabOnUser, true); _guestTabOnUser = null; }
+    var myRun = ++_guestTabRun;
     var start = Date.now(), lastClick = 0, guestSince = 0, camDone = false;
     if (withCamera) photoCover(true);
-    function stop() { if (_guestTabIv) { clearInterval(_guestTabIv); _guestTabIv = null; } document.removeEventListener('pointerdown', onUser, true); photoCover(false); }
+    // Belt and braces on the same hazard: a superseded run must never tear down a newer one's state.
+    function stop() {
+      if (myRun !== _guestTabRun) return;                                  // superseded — not ours to stop
+      if (_guestTabIv) { clearInterval(_guestTabIv); _guestTabIv = null; }
+      document.removeEventListener('pointerdown', onUser, true);
+      if (_guestTabOnUser === onUser) _guestTabOnUser = null;
+      photoCover(false);
+    }
     // No camera to open (member already has a photo, or ROLLER never rendered the capture) -> drop staff on
     // ROLLER's normal Membership view (the regular path) rather than holding an empty Guest tab.
     function toMembershipAndStop() { var mem = document.getElementById('bip-detail-tab-ticket'); if (mem && mem.getAttribute('aria-selected') !== 'true') mem.click(); stop(); }
@@ -1675,7 +1691,9 @@
       else { var g0 = document.getElementById('bip-detail-tab-customer'); if (g0 && g0.getAttribute('aria-selected') === 'true') stop(); }
     }
     document.addEventListener('pointerdown', onUser, true);
-    _guestTabIv = setInterval(function () {
+    _guestTabOnUser = onUser;
+    var iv = setInterval(function () {
+      if (myRun !== _guestTabRun) { clearInterval(iv); return; }            // a newer run took over
       try {
         var g = document.getElementById('bip-detail-tab-customer');
         if (g) {
@@ -1706,6 +1724,7 @@
         if (Date.now() - start > (withCamera ? 7000 : 4000)) { if (withCamera && !document.querySelector('video')) toMembershipAndStop(); else stop(); }
       } catch (e) { stop(); }
     }, 100);
+    _guestTabIv = iv;
   }
   // After ROLLER's "Done" saves and pushes the parent account page (the child path minus its last /id),
   // step back past it AND the child edit page (history.go(-2)) so staff land back where they came from
