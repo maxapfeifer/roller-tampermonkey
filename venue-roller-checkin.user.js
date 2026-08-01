@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Venue — ROLLER Check-in Cards + Member Photos
 // @namespace    venue.roller.checkin-cards
-// @version      5.127
+// @version      5.128
 // @description  Reformats the ROLLER POS booking check-in list into full-frame photo cards, surfaces member photos on load (no Verify click), alerts when a member has no photo, handles family memberships (best-effort photos + add-name prompt) and close/similar name matches.
 // @match        https://pos.roller.app/*
 // @match        https://*.roller.app/*
@@ -50,6 +50,8 @@
     MISMATCH_ACTREQ_HD: 'FRAUD FLAG: NAME MISMATCH',              // heading on the name-mismatch action box
     MISMATCH_ACTREQ_SUB: 'PLEASE CHECK PHOTO EXTRA CAREFULLY',    // sub-line on the name-mismatch action box
     MISSING_PHOTOS_MSG: 'Add missing photos to avoid auto cancellation of memberships',  // reword ROLLER's "Missing member photos" banner sub-line (native text: "Add missing photos to help staff verify members quickly.")
+    OPEN_ITEMS_LABEL:  'MEMBERSHIP PROFILES ONLY',  // relabel ROLLER's "OPEN ITEMS" section pill ('' = leave it as-is)
+    BLOCK_WC_MEM_CHECKIN: true,  // hide the check-in shield on WONDER CLUB membership-PROFILE cards (the open-item profiles with the black "MEMBERSHIP: N USES" strip) so staff can't check them in there. Gold Pass profiles and normal tickets are unaffected.
     // Age-type icons for casual/foster tiles (infant/child/adult), by ticket type. Populated with data:URIs
     // just below the CFG block (kept out of the literal so the base64 blobs don't clutter the config).
     AGE_ICONS:        {},
@@ -782,6 +784,9 @@
       '.panel__header:has(.bip-list-header){padding-top:6px !important;padding-bottom:32px !important;}',
       'app-bip-summary:not(.rcz-skip) .summary__wrapper .summary-detail-time{display:none !important;}',
       'app-bip-summary:not(.rcz-skip) .summary__wrapper app-icon-button.align-top:has(button[id^="check-in-button"]){position:absolute !important;right:18px !important;bottom:12px !important;margin:0 !important;z-index:6 !important;}',
+      // Wonder Club membership PROFILES (host tagged .rcz-nocheckin) — hide the check-in shield entirely.
+      'app-bip-summary.rcz-nocheckin app-icon-button:has(button[id^="check-in-button"]){display:none !important;}',
+      'app-bip-summary.rcz-nocheckin button[id^="check-in-button"]{display:none !important;}',
       /* check-in button: 66px square sized to the name-label height; glyph scaled to match. Full box
          stays clickable; the shield (when on) is drawn as ::before so the whole square still taps. */
       'app-bip-summary:not(.rcz-skip) .summary__wrapper app-icon-button.align-top:has(button[id^="check-in-button"]) button{width:48px !important;height:48px !important;min-width:48px !important;min-height:48px !important;padding:0 !important;position:relative !important;overflow:visible !important;' + (CFG.SHOW_SHIELD ? 'background:transparent !important;border:none !important;box-shadow:none !important;border-radius:0 !important;' : 'border-radius:12px !important;box-shadow:0 2px 8px rgba(0,0,0,.35) !important;') + '}',
@@ -1502,7 +1507,12 @@
     var mHasPhoto = !!w.querySelector('img.rcz-photo');
     paintStatus(w, 'Matched', false, mHasPhoto ? 'Showing' : 'Required Today', !mHasPhoto);
     addMemStrip(w, info.uses);                                       // dark "MEMBERSHIP: N USES" strip
-    addBadge(w, membershipTier(host));
+    var _tier = membershipTier(host);
+    addBadge(w, _tier);
+    // A Wonder Club membership PROFILE (this open-item card) isn't checked in via the shield — hide it so
+    // staff can't check the profile in from here. Gold Pass profiles keep their shield; normal ticket cards
+    // never reach renderMembership so they're untouched.
+    host.classList.toggle('rcz-nocheckin', CFG.BLOCK_WC_MEM_CHECKIN && _tier === 'wonder');
     addMemName(w, info.type, info.first);
     // FRAUD WARNING / ADD PHOTO on a membership-search card that has no photo (same as the booking tiles)
     var _mpc = btn ? btn.id.replace('booking-details-button-', '') : null;
@@ -1555,6 +1565,7 @@
       }
       injectStyle();
       retextMissingPhotosBanner();   // reword ROLLER's native "Missing member photos" banner sub-line
+      retextOpenItems();             // relabel ROLLER's "OPEN ITEMS" section pill
       // #4: back on the booking screen with a "ready" handoff for THIS booking -> fire the modal once
       try { var _hv = sessionStorage.getItem('rcz-handoff'), _hb = (location.pathname.match(/\/bookings\/(\d+)/) || [])[1]; if (_hv && _hb && _hv.indexOf('ready:' + _hb + ':') === 0) { var _hc = _hv.slice(('ready:' + _hb + ':').length); sessionStorage.removeItem('rcz-handoff'); showHandoffModal(_hb, _hc); } } catch (e) {}
       markSkips();
@@ -2356,6 +2367,15 @@
       if (/add missing photos to help staff verify members/i.test(ps[i].textContent || '') && ps[i].textContent !== CFG.MISSING_PHOTOS_MSG) {
         ps[i].textContent = CFG.MISSING_PHOTOS_MSG;
       }
+    }
+  }
+  // Relabel ROLLER's "OPEN ITEMS" section pill (e.g. -> "MEMBERSHIP PROFILES ONLY"). Matched by the native
+  // text on the pill span, re-applied on render since ROLLER re-renders it. The pill's own CSS uppercases it.
+  function retextOpenItems() {
+    if (!CFG.OPEN_ITEMS_LABEL) return;
+    var els = document.querySelectorAll('span.ui-pill__text');
+    for (var i = 0; i < els.length; i++) {
+      if (/^\s*open items\s*$/i.test(els[i].textContent || '') && els[i].textContent !== CFG.OPEN_ITEMS_LABEL) els[i].textContent = CFG.OPEN_ITEMS_LABEL;
     }
   }
 
