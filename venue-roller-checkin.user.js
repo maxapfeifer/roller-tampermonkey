@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Venue — ROLLER Check-in Cards + Member Photos
 // @namespace    venue.roller.checkin-cards
-// @version      5.126
+// @version      5.127
 // @description  Reformats the ROLLER POS booking check-in list into full-frame photo cards, surfaces member photos on load (no Verify click), alerts when a member has no photo, handles family memberships (best-effort photos + add-name prompt) and close/similar name matches.
 // @match        https://pos.roller.app/*
 // @match        https://*.roller.app/*
@@ -49,6 +49,7 @@
     WARN_SUB:         'COMPLETE MEMBER PROFILE TO AVOID CANCELLATION',  // ACTION REQUIRED banner sub-line
     MISMATCH_ACTREQ_HD: 'FRAUD FLAG: NAME MISMATCH',              // heading on the name-mismatch action box
     MISMATCH_ACTREQ_SUB: 'PLEASE CHECK PHOTO EXTRA CAREFULLY',    // sub-line on the name-mismatch action box
+    MISSING_PHOTOS_MSG: 'Add missing photos to avoid auto cancellation of memberships',  // reword ROLLER's "Missing member photos" banner sub-line (native text: "Add missing photos to help staff verify members quickly.")
     // Age-type icons for casual/foster tiles (infant/child/adult), by ticket type. Populated with data:URIs
     // just below the CFG block (kept out of the literal so the base64 blobs don't clutter the config).
     AGE_ICONS:        {},
@@ -1553,6 +1554,7 @@
         return;
       }
       injectStyle();
+      retextMissingPhotosBanner();   // reword ROLLER's native "Missing member photos" banner sub-line
       // #4: back on the booking screen with a "ready" handoff for THIS booking -> fire the modal once
       try { var _hv = sessionStorage.getItem('rcz-handoff'), _hb = (location.pathname.match(/\/bookings\/(\d+)/) || [])[1]; if (_hv && _hb && _hv.indexOf('ready:' + _hb + ':') === 0) { var _hc = _hv.slice(('ready:' + _hb + ':').length); sessionStorage.removeItem('rcz-handoff'); showHandoffModal(_hb, _hc); } } catch (e) {}
       markSkips();
@@ -2342,6 +2344,19 @@
   function ensureFileUploadBtn() {
     if (!CFG.PHOTO_FILE_UPLOAD) return;
     document.querySelectorAll('.image-capture').forEach(function (cap) { addFileBtn(cap); });
+  }
+
+  // Reword ROLLER's native "Missing member photos" banner sub-line. Its <p class="rds-banner__message">
+  // reads "Add missing photos to help staff verify members quickly." — we swap it for a cancellation warning.
+  // Matched by the distinctive native text (not an id), and re-applied on every render since ROLLER re-renders
+  // the banner. Once swapped the old text no longer matches, so it never fights itself.
+  function retextMissingPhotosBanner() {
+    var ps = document.querySelectorAll('p.rds-banner__message');
+    for (var i = 0; i < ps.length; i++) {
+      if (/add missing photos to help staff verify members/i.test(ps[i].textContent || '') && ps[i].textContent !== CFG.MISSING_PHOTOS_MSG) {
+        ps[i].textContent = CFG.MISSING_PHOTOS_MSG;
+      }
+    }
   }
 
   function boot() {
