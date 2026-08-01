@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Venue — ROLLER Check-in Cards + Member Photos
 // @namespace    venue.roller.checkin-cards
-// @version      5.128
+// @version      5.129
 // @description  Reformats the ROLLER POS booking check-in list into full-frame photo cards, surfaces member photos on load (no Verify click), alerts when a member has no photo, handles family memberships (best-effort photos + add-name prompt) and close/similar name matches.
 // @match        https://pos.roller.app/*
 // @match        https://*.roller.app/*
@@ -51,6 +51,7 @@
     MISMATCH_ACTREQ_SUB: 'PLEASE CHECK PHOTO EXTRA CAREFULLY',    // sub-line on the name-mismatch action box
     MISSING_PHOTOS_MSG: 'Add missing photos to avoid auto cancellation of memberships',  // reword ROLLER's "Missing member photos" banner sub-line (native text: "Add missing photos to help staff verify members quickly.")
     OPEN_ITEMS_LABEL:  'MEMBERSHIP PROFILES ONLY',  // relabel ROLLER's "OPEN ITEMS" section pill ('' = leave it as-is)
+    TODAY_LABEL:       'TICKETS BOOKED FOR TODAY',   // relabel the grey "TODAY" section-header pill above the ticket tiles ('' = leave it). Only the grey (color--neutral) pill; the green "Today" status badge is untouched.
     BLOCK_WC_MEM_CHECKIN: true,  // hide the check-in shield on WONDER CLUB membership-PROFILE cards (the open-item profiles with the black "MEMBERSHIP: N USES" strip) so staff can't check them in there. Gold Pass profiles and normal tickets are unaffected.
     // Age-type icons for casual/foster tiles (infant/child/adult), by ticket type. Populated with data:URIs
     // just below the CFG block (kept out of the literal so the base64 blobs don't clutter the config).
@@ -1565,7 +1566,7 @@
       }
       injectStyle();
       retextMissingPhotosBanner();   // reword ROLLER's native "Missing member photos" banner sub-line
-      retextOpenItems();             // relabel ROLLER's "OPEN ITEMS" section pill
+      retextSectionPills();          // relabel ROLLER's grey section pills ("OPEN ITEMS", "TODAY")
       // #4: back on the booking screen with a "ready" handoff for THIS booking -> fire the modal once
       try { var _hv = sessionStorage.getItem('rcz-handoff'), _hb = (location.pathname.match(/\/bookings\/(\d+)/) || [])[1]; if (_hv && _hb && _hv.indexOf('ready:' + _hb + ':') === 0) { var _hc = _hv.slice(('ready:' + _hb + ':').length); sessionStorage.removeItem('rcz-handoff'); showHandoffModal(_hb, _hc); } } catch (e) {}
       markSkips();
@@ -2369,13 +2370,16 @@
       }
     }
   }
-  // Relabel ROLLER's "OPEN ITEMS" section pill (e.g. -> "MEMBERSHIP PROFILES ONLY"). Matched by the native
-  // text on the pill span, re-applied on render since ROLLER re-renders it. The pill's own CSS uppercases it.
-  function retextOpenItems() {
-    if (!CFG.OPEN_ITEMS_LABEL) return;
+  // Relabel ROLLER's grey section-header pills (e.g. "OPEN ITEMS" -> "MEMBERSHIP PROFILES ONLY", "TODAY" ->
+  // "TICKETS BOOKED FOR TODAY"). Matched by the native text on the pill span, re-applied on render since ROLLER
+  // re-renders them; the pill's own CSS uppercases the result. The "TODAY" swap is scoped to the grey
+  // (color--neutral) section pill so the green "Today" status badge next to VALID is left alone.
+  function retextSectionPills() {
     var els = document.querySelectorAll('span.ui-pill__text');
     for (var i = 0; i < els.length; i++) {
-      if (/^\s*open items\s*$/i.test(els[i].textContent || '') && els[i].textContent !== CFG.OPEN_ITEMS_LABEL) els[i].textContent = CFG.OPEN_ITEMS_LABEL;
+      var s = els[i], t = s.textContent || '', pill = s.parentElement;
+      if (CFG.OPEN_ITEMS_LABEL && /^\s*open items\s*$/i.test(t) && t !== CFG.OPEN_ITEMS_LABEL) s.textContent = CFG.OPEN_ITEMS_LABEL;
+      if (CFG.TODAY_LABEL && /^\s*today\s*$/i.test(t) && t !== CFG.TODAY_LABEL && pill && /color--neutral/.test(pill.className || '')) s.textContent = CFG.TODAY_LABEL;
     }
   }
 
