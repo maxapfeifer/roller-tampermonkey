@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Venue — ROLLER Check-in Cards + Member Photos
 // @namespace    venue.roller.checkin-cards
-// @version      5.130
+// @version      5.131
 // @description  Reformats the ROLLER POS booking check-in list into full-frame photo cards, surfaces member photos on load (no Verify click), alerts when a member has no photo, handles family memberships (best-effort photos + add-name prompt) and close/similar name matches.
 // @match        https://pos.roller.app/*
 // @match        https://*.roller.app/*
@@ -52,7 +52,7 @@
     MISSING_PHOTOS_MSG: 'Add missing photos to avoid auto cancellation of memberships',  // reword ROLLER's "Missing member photos" banner sub-line (native text: "Add missing photos to help staff verify members quickly.")
     OPEN_ITEMS_LABEL:  'MEMBERSHIP PROFILES ONLY',  // relabel ROLLER's "OPEN ITEMS" section pill ('' = leave it as-is)
     TODAY_LABEL:       'TICKETS BOOKED FOR TODAY',   // relabel the grey "TODAY" section-header pill above the ticket tiles ('' = leave it). Only the grey (color--neutral) pill; the green "Today" status badge is untouched.
-    BLOCK_WC_MEM_CHECKIN: true,  // hide the check-in shield on WONDER CLUB membership-PROFILE cards (the open-item profiles with the black "MEMBERSHIP: N USES" strip) so staff can't check them in there. Gold Pass profiles and normal tickets are unaffected.
+    BLOCK_PROFILE_CHECKIN: true,  // hide the check-in tick on membership tiles under the "MEMBERSHIP PROFILES ONLY" (ROLLER's OPEN ITEMS) section — those are membership PROFILES, not a dated admission. ALL member types. Tiles under a DATE section (a real session booking) keep their tick.
     HIDE_MEMBER_TICK: true,      // on a membership PROFILE detail page (member profile via search, or a membership item detail), hide ROLLER's check-in tick in the header. All member types. Leaves the Back button and ticket item details alone.
     // Age-type icons for casual/foster tiles (infant/child/adult), by ticket type. Populated with data:URIs
     // just below the CFG block (kept out of the literal so the base64 blobs don't clutter the config).
@@ -786,7 +786,8 @@
       '.panel__header:has(.bip-list-header){padding-top:6px !important;padding-bottom:32px !important;}',
       'app-bip-summary:not(.rcz-skip) .summary__wrapper .summary-detail-time{display:none !important;}',
       'app-bip-summary:not(.rcz-skip) .summary__wrapper app-icon-button.align-top:has(button[id^="check-in-button"]){position:absolute !important;right:18px !important;bottom:12px !important;margin:0 !important;z-index:6 !important;}',
-      // Wonder Club membership PROFILES (host tagged .rcz-nocheckin) — hide the check-in shield entirely.
+      // Membership tiles under "MEMBERSHIP PROFILES ONLY" (tagged .rcz-nocheckin by tagProfileOnlyCards) —
+      // hide the check-in tick entirely so a profile can't be checked in there. Dated-section tiles keep it.
       'app-bip-summary.rcz-nocheckin app-icon-button:has(button[id^="check-in-button"]){display:none !important;}',
       'app-bip-summary.rcz-nocheckin button[id^="check-in-button"]{display:none !important;}',
       /* check-in button: 66px square sized to the name-label height; glyph scaled to match. Full box
@@ -1509,12 +1510,9 @@
     var mHasPhoto = !!w.querySelector('img.rcz-photo');
     paintStatus(w, 'Matched', false, mHasPhoto ? 'Showing' : 'Required Today', !mHasPhoto);
     addMemStrip(w, info.uses);                                       // dark "MEMBERSHIP: N USES" strip
-    var _tier = membershipTier(host);
-    addBadge(w, _tier);
-    // A Wonder Club membership PROFILE (this open-item card) isn't checked in via the shield — hide it so
-    // staff can't check the profile in from here. Gold Pass profiles keep their shield; normal ticket cards
-    // never reach renderMembership so they're untouched.
-    host.classList.toggle('rcz-nocheckin', CFG.BLOCK_WC_MEM_CHECKIN && _tier === 'wonder');
+    addBadge(w, membershipTier(host));
+    // (Which membership tiles lose their check-in tick is decided by SECTION, not tier — see
+    // tagProfileOnlyCards(): only tiles under the "MEMBERSHIP PROFILES ONLY" / OPEN ITEMS header, all tiers.)
     addMemName(w, info.type, info.first);
     // FRAUD WARNING / ADD PHOTO on a membership-search card that has no photo (same as the booking tiles)
     var _mpc = btn ? btn.id.replace('booking-details-button-', '') : null;
@@ -1577,6 +1575,7 @@
       markSkips();
       ensureShields();
       shorten();
+      tagProfileOnlyCards();   // hide the check-in tick on membership tiles under "MEMBERSHIP PROFILES ONLY" (needs .rcz-mem from markSkips)
       state.memLinks = membershipLinkMap();  // member name -> detail URL, scraped from the discounts panel
       document.querySelectorAll('app-bip-summary:not(.rcz-skip) .summary__wrapper').forEach(function (w) {
         var memHost = w.closest('app-bip-summary');
@@ -2389,6 +2388,25 @@
       var s = els[i], t = s.textContent || '', pill = s.parentElement;
       if (CFG.OPEN_ITEMS_LABEL && /^\s*open items\s*$/i.test(t) && t !== CFG.OPEN_ITEMS_LABEL) s.textContent = CFG.OPEN_ITEMS_LABEL;
       if (CFG.TODAY_LABEL && /^\s*today\s*$/i.test(t) && t !== CFG.TODAY_LABEL && pill && /color--neutral/.test(pill.className || '')) s.textContent = CFG.TODAY_LABEL;
+    }
+  }
+  // Hide the check-in tick on membership tiles that sit under the "MEMBERSHIP PROFILES ONLY" (ROLLER's OPEN
+  // ITEMS) section — those are membership PROFILES, not a dated admission, so staff shouldn't check them in
+  // there. Tiles under a DATE section (a real session booking) keep their tick. All member types. We walk the
+  // list in document order tracking the current SECTION header — a ui-pill NOT inside a card (each card has
+  // its own "Current" status pill, which we must ignore) — and tag membership cards under the profiles section
+  // with .rcz-nocheckin (the CSS then hides their shield/tick).
+  function tagProfileOnlyCards() {
+    if (!CFG.BLOCK_PROFILE_CHECKIN) return;
+    var main = document.querySelector('.panel__main-inner'); if (!main) return;
+    var walker = document.createTreeWalker(main, NodeFilter.SHOW_ELEMENT, null), node, section = null;
+    while ((node = walker.nextNode())) {
+      if (node.matches('span.ui-pill__text') && !(node.closest && node.closest('app-bip-summary'))) {
+        var t = (node.textContent || '').trim(); if (t) section = t;   // a real section header (not an in-card status pill)
+      } else if (node.tagName === 'APP-BIP-SUMMARY') {
+        var profilesOnly = /^(open items|membership profiles only)$/i.test(section || '') && node.classList.contains('rcz-mem');
+        node.classList.toggle('rcz-nocheckin', profilesOnly);
+      }
     }
   }
 
