@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Venue — ROLLER Check-in Cards + Member Photos
 // @namespace    venue.roller.checkin-cards
-// @version      5.136
+// @version      5.137
 // @description  Reformats the ROLLER POS booking check-in list into full-frame photo cards, surfaces member photos on load (no Verify click), alerts when a member has no photo, handles family memberships (best-effort photos + add-name prompt) and close/similar name matches.
 // @match        https://pos.roller.app/*
 // @match        https://*.roller.app/*
@@ -55,6 +55,9 @@
     TODAY_LABEL:       'TICKETS BOOKED FOR TODAY',   // relabel the grey "TODAY" section-header pill above the ticket tiles ('' = leave it). Only the grey (color--neutral) pill; the green "Today" status badge is untouched.
     BIG_SECTION_PILLS: true,                         // enlarge the grey section-header pills (~3x) so section boundaries are obvious; in-card status pills stay normal size
     DATE_PREFIX:       'TICKETS BOOKED FOR ',        // prefix grey DATE section-header pills, e.g. "11 May 2026" -> "TICKETS BOOKED FOR 11 May 2026" ('' = leave dates as-is)
+    TAG_SEARCH_TYPES:  true,                         // badge each booking-search result as a MEMBERSHIP purchase vs attendance TICKET (from the search response's productName)
+    SEARCH_MEM_LABEL:  'MEMBERSHIP',                 // badge text for a membership-purchase search result
+    SEARCH_TKT_LABEL:  'TICKETS',                    // badge text for an attendance-ticket search result
     BLOCK_PROFILE_CHECKIN: true,  // hide the check-in tick on membership tiles under the "MEMBERSHIP PROFILES ONLY" (ROLLER's OPEN ITEMS) section — those are membership PROFILES, not a dated admission. ALL member types. Tiles under a DATE section (a real session booking) keep their tick.
     HIDE_MEMBER_TICK: true,      // on a membership PROFILE detail page (member profile via search, or a membership item detail), hide ROLLER's check-in tick in the header. All member types. Leaves the Back button and ticket item details alone.
     // Age-type icons for casual/foster tiles (infant/child/adult), by ticket type. Populated with data:URIs
@@ -206,7 +209,8 @@
     discountIndex:{},   // memberBookingItemPartId -> {name, cardId}  (Verify-click fallback)
     birthdays:    {},   // cardId(bookingItemPartId) -> month number 1-12 (from Ticket Holder Details form)
     formNames:    {},   // cardId(bookingItemPartId) -> first name (from Ticket Holder Details form) when the ticket's own name is blank
-    formsSeen:    {}    // rollerFormResponseId -> true (so we fetch each form's answers only once)
+    formsSeen:    {},   // rollerFormResponseId -> true (so we fetch each form's answers only once)
+    searchTypes:  {}    // receiptNumber -> {membership:bool, product:str}  (from keyword-search, to tag search rows)
   };
 
   /* ======================================================================
@@ -230,9 +234,24 @@
         var j = JSON.parse(text); if (j && j.bipDetail) { state.booking = j; processBooking(); }
       } else if (url.indexOf('get-membership') > -1) {
         var g = JSON.parse(text); if (g && g.bookingItemPartId !== undefined) resolveFromMemberPart(g.bookingItemPartId, g.imageFileName || null);
+      } else if (url.indexOf('keyword-search') > -1) {
+        indexSearchResults(JSON.parse(text));
       }
     } catch (e) {}
   }
+  // The booking search (POST /api/bookings/keyword-search) returns a productName per result even though ROLLER
+  // doesn't show it in the list. We index receiptNumber (the # shown on each row) -> membership? so tagSearchRows()
+  // can badge each row as a MEMBERSHIP purchase vs an attendance TICKET without opening it.
+  function indexSearchResults(j) {
+    if (!j) return;
+    var arr = Array.isArray(j) ? j : Object.keys(j).map(function (k) { return j[k]; });
+    arr.forEach(function (o) {
+      if (!o || o.receiptNumber == null) return;
+      state.searchTypes[o.receiptNumber] = { membership: isMembershipProduct(o.productName), product: o.productName || '' };
+    });
+  }
+  // A booking is a membership purchase (not an admission) when its product text names a membership tier/product.
+  function isMembershipProduct(name) { return /wonder club|gold pass|\bmembership\b|unlocks/i.test(String(name || '')); }
 
   var X = XMLHttpRequest.prototype;
   var oOpen = X.open, oSet = X.setRequestHeader, oSend = X.send;
@@ -241,7 +260,7 @@
   X.send = function () {
     var xhr = this, u = String(xhr.__rczUrl || '');
     if (u.indexOf('/api/') > -1) stashAuth(u, xhr.__rczHdr);
-    if (/\/api\/bookings\/\d+(\?|$)/.test(u) || u.indexOf('get-membership') > -1) {
+    if (/\/api\/bookings\/\d+(\?|$)/.test(u) || u.indexOf('get-membership') > -1 || u.indexOf('keyword-search') > -1) {
       xhr.addEventListener('load', function () { onResponse(u, xhr.responseText); });
     }
     return oSend.apply(this, arguments);
@@ -256,7 +275,7 @@
       if (String(url).indexOf('/api/') > -1) stashAuth(url, hdrs);
     } catch (e) {}
     return oFetch.apply(this, args).then(function (res) {
-      try { var u = (res && res.url) || url; if (/\/api\/bookings\/\d+(\?|$)/.test(String(u)) || String(u).indexOf('get-membership') > -1) res.clone().text().then(function (t) { onResponse(u, t); }).catch(function () {}); } catch (e) {}
+      try { var u = (res && res.url) || url; if (/\/api\/bookings\/\d+(\?|$)/.test(String(u)) || String(u).indexOf('get-membership') > -1 || String(u).indexOf('keyword-search') > -1) res.clone().text().then(function (t) { onResponse(u, t); }).catch(function () {}); } catch (e) {}
       return res;
     });
   };
@@ -1564,6 +1583,7 @@
       injectGlobalStyle();
       hideRedeemButtons();
       ensureFileUploadBtn();   // "Choose a photo file" beside ROLLER's camera capture (runs on the member/item detail pages too, so it's before the activeRoute gate)
+      tagSearchRows();         // badge search-result rows MEMBERSHIP vs TICKETS (search list isn't the activeRoute, so before the gate)
       // On a membership PROFILE detail (member profile via search, or a membership item detail) tag <body> so
       // the CSS hides ROLLER's header check-in tick. Only membership headers (product name contains
       // "Membership") — plain ticket item details keep their tick.
@@ -2253,6 +2273,12 @@
       '#booking-membership-verification-banner{display:none !important;}'
     ];
     if (CFG.HIDE_REDEEM) rules.push('#redeem-membership-button,app-generic-button:has(#redeem-membership-button){display:none !important;}');
+    if (CFG.TAG_SEARCH_TYPES) rules.push(
+      // MEMBERSHIP (purple) vs TICKETS (blue) badge on each booking-search row. Distinct from the green VALID pill.
+      '.rcz-searchtype{margin-left:6px !important;font-size:11px !important;font-weight:700 !important;letter-spacing:.02em !important;padding:2px 8px !important;border-radius:999px !important;line-height:1.5 !important;color:#fff !important;white-space:nowrap !important;}',
+      '.rcz-searchtype.rcz-st-mem{background:#7b3fa0 !important;}',
+      '.rcz-searchtype.rcz-st-tkt{background:#2f6fb0 !important;}'
+    );
     if (CFG.HIDE_MEMBER_TICK) rules.push(
       'body.rcz-hidetick .bip-summary-header app-icon-button:has(button[id^="check-in-button"]){display:none !important;}',
       'body.rcz-hidetick .bip-summary-header button[id^="check-in-button"]{display:none !important;}'
@@ -2453,6 +2479,34 @@
       if (cb && cb.checked) anyProfileSelected = true;
     });
     document.body.classList.toggle('rcz-hidecheckinbtn', anyProfileSelected);
+  }
+  // Badge each booking-search row as a MEMBERSHIP purchase vs an attendance TICKET, using the productName we
+  // captured from the keyword-search response (state.searchTypes, keyed by the # / receiptNumber shown on the row).
+  // Lets staff tell them apart in the results list without opening each one.
+  function tagSearchRows() {
+    if (!CFG.TAG_SEARCH_TYPES) return;
+    var rows = document.querySelectorAll('app-booking-search-result');
+    for (var i = 0; i < rows.length; i++) {
+      var row = rows[i];
+      var a = row.querySelector('a[id^="booking-search-result-"]');
+      var receipt = a ? a.id.replace('booking-search-result-', '') : null;
+      if (!receipt) { var idEl = row.querySelector('#booking-search-id .selectable'); receipt = idEl ? (idEl.textContent || '').trim() : null; }
+      if (!receipt) continue;
+      var info = state.searchTypes[receipt];
+      if (!info) continue;                          // unknown until the search response is indexed
+      var badge = row.querySelector('.rcz-searchtype');
+      if (!badge) {
+        badge = document.createElement('span');
+        badge.className = 'ui-pill rcz-searchtype';
+        var pills = row.querySelectorAll('.ui-pill:not(.rcz-searchtype)');
+        var anchor = pills.length ? pills[pills.length - 1] : null;   // sit just after the VALID/EXPIRED status pill
+        if (anchor && anchor.parentElement) anchor.parentElement.insertBefore(badge, anchor.nextSibling);
+        else (row.querySelector('.booking-search-result__data') || row).appendChild(badge);
+      }
+      badge.classList.toggle('rcz-st-mem', !!info.membership);
+      badge.classList.toggle('rcz-st-tkt', !info.membership);
+      badge.textContent = info.membership ? CFG.SEARCH_MEM_LABEL : CFG.SEARCH_TKT_LABEL;
+    }
   }
 
   function boot() {
