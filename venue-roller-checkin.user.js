@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Venue — ROLLER Check-in Cards + Member Photos
 // @namespace    venue.roller.checkin-cards
-// @version      5.143
+// @version      5.144
 // @description  Reformats the ROLLER POS booking check-in list into full-frame photo cards, surfaces member photos on load (no Verify click), alerts when a member has no photo, handles family memberships (best-effort photos + add-name prompt) and close/similar name matches.
 // @match        https://pos.roller.app/*
 // @match        https://*.roller.app/*
@@ -290,11 +290,20 @@
   //   3. no guest    -> OTHER     (walk-up café / retail — no person attached)
   //   4. guest + admission product -> TICKETS
   //   5. guest but not an admission (e.g. café charged to an account) -> OTHER
+  // Validity window in days (bookingEndDate - bookingDate). An admission is single-day (~0); a membership /
+  // annual pass runs long (~365); a gift card longer still.
+  function spanDays(o) {
+    try { var a = new Date(o.bookingDate), b = new Date(o.bookingEndDate); if (isNaN(a) || isNaN(b)) return 0; return Math.round((b - a) / 86400000); } catch (e) { return 0; }
+  }
   function classifyResult(o, product) {
     var p = String(product || (o && o.productName) || '');
     if (/wonder club|gold pass|\bmembership\b|unlocks/i.test(p)) return 'membership';
     if (/gift\s*card/i.test(p)) return 'giftcard';
     if (!hasGuest(o)) return 'other';
+    // Some memberships/annual passes are named exactly like admissions ("Adult (18+ years), Child (0-18 years)")
+    // with NO membership keyword. An admission is single-day; a membership runs long — so a long validity span
+    // means membership even without a keyword. Exclude multi-visit packages ("Book for 6") which can also run long.
+    if (!/book for|group booking/i.test(p) && spanDays(o) >= 60) return 'membership';
     if (isAdmission(p)) return 'tickets';
     return 'other';
   }
