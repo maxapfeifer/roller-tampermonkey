@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Venue — ROLLER Check-in Cards + Member Photos
 // @namespace    venue.roller.checkin-cards
-// @version      5.141
+// @version      5.143
 // @description  Reformats the ROLLER POS booking check-in list into full-frame photo cards, surfaces member photos on load (no Verify click), alerts when a member has no photo, handles family memberships (best-effort photos + add-name prompt) and close/similar name matches.
 // @match        https://pos.roller.app/*
 // @match        https://*.roller.app/*
@@ -59,6 +59,7 @@
     SEARCH_MEM_LABEL:  'M/SHIP',                      // badge text for a membership-purchase search result
     SEARCH_TKT_LABEL:  'TICKETS',                    // badge text for an attendance-ticket search result
     SEARCH_GIFT_LABEL: 'GIFT CARD',                  // badge text for a gift-card search result
+    SEARCH_OTHER_LABEL:'OTHER',                      // badge text for a result with no guest attached (walk-up café/retail/misc)
     BLOCK_PROFILE_CHECKIN: true,  // hide the check-in tick on membership tiles under the "MEMBERSHIP PROFILES ONLY" (ROLLER's OPEN ITEMS) section — those are membership PROFILES, not a dated admission. ALL member types. Tiles under a DATE section (a real session booking) keep their tick.
     HIDE_MEMBER_TICK: true,      // on a membership PROFILE detail page (member profile via search, or a membership item detail), hide ROLLER's check-in tick in the header. All member types. Leaves the Back button and ticket item details alone.
     // Age-type icons for casual/foster tiles (infant/child/adult), by ticket type. Populated with data:URIs
@@ -250,7 +251,6 @@
     if (!j) return;
     var arr = Array.isArray(j) ? j : (j.bookings || j.data || j.items || j.results || []);
     if (!arr || !arr.length) return;
-    try { window.__rczTodayRaw = arr; } catch (e) {}   // DEBUG (temp): expose raw today data to inspect fields
     arr.forEach(function (o) {
       if (!o) return;
       var receipt = o.receiptNumber != null ? o.receiptNumber
@@ -259,7 +259,7 @@
       if (receipt == null) return;
       var product = o.productName || o.productSummary || o.products || o.productDescription || '';
       if (!product && Array.isArray(o.bipDetail)) product = o.bipDetail.map(function (b) { return b.name || b.productName || ''; }).join(', ');
-      state.searchTypes[receipt] = { type: classifyProduct(product), product: String(product || '') };
+      state.searchTypes[receipt] = { type: classifyResult(o, product), product: String(product || '') };
     });
     setTimeout(tagSearchRows, 0);  // rows may already be on screen (or render right after) -> tag them now
   }
@@ -271,18 +271,32 @@
     var arr = Array.isArray(j) ? j : Object.keys(j).map(function (k) { return j[k]; });
     arr.forEach(function (o) {
       if (!o || o.receiptNumber == null) return;
-      state.searchTypes[o.receiptNumber] = { type: classifyProduct(o.productName), product: o.productName || '' };
+      state.searchTypes[o.receiptNumber] = { type: classifyResult(o, o.productName), product: o.productName || '' };
     });
     setTimeout(tagSearchRows, 0);  // rows may already be rendered when the response lands -> re-tag now
   }
-  // Classify a booking by its product text into a search-badge type: 'membership' (a membership purchase/profile),
-  // 'giftcard' (a gift card, NOT an admission), or 'tickets' (the default — an admission booking). Extend the
-  // regexes here to recognise more non-admission product types (parties, retail, etc.) as they turn up.
-  function classifyProduct(name) {
-    var s = String(name || '');
-    if (/wonder club|gold pass|\bmembership\b|unlocks/i.test(s)) return 'membership';
-    if (/gift\s*card/i.test(s)) return 'giftcard';
-    return 'tickets';
+  // A search result has a GUEST attached when any booking-holder identity field is populated. Walk-up café /
+  // retail sales come through with all of these blank (confirmed on live data), so "no guest" cleanly marks them.
+  function hasGuest(o) {
+    return !!(o && (o.customerId || String(o.bookingName || '').trim() || String(o.contactName || '').trim() || String(o.email || '').trim() || String(o.phoneNumber || '').trim()));
+  }
+  // Does the product text look like an admission (an entry / visit product for a person)?
+  function isAdmission(p) {
+    return /adult|child|infant|senior|concession|\b\d{1,2}\s*\+|\byears?\b|\byrs?\b|book for|\bentry\b|\bsession\b|\bcasual\b|\bplay\b/i.test(String(p || ''));
+  }
+  // Classify a search result into a badge type. Order matters:
+  //   1. membership  -> M/SHIP    (priority, with or without a guest)
+  //   2. gift card   -> GIFT CARD (priority, with or without a guest)
+  //   3. no guest    -> OTHER     (walk-up café / retail — no person attached)
+  //   4. guest + admission product -> TICKETS
+  //   5. guest but not an admission (e.g. café charged to an account) -> OTHER
+  function classifyResult(o, product) {
+    var p = String(product || (o && o.productName) || '');
+    if (/wonder club|gold pass|\bmembership\b|unlocks/i.test(p)) return 'membership';
+    if (/gift\s*card/i.test(p)) return 'giftcard';
+    if (!hasGuest(o)) return 'other';
+    if (isAdmission(p)) return 'tickets';
+    return 'other';
   }
 
   var X = XMLHttpRequest.prototype;
@@ -2320,7 +2334,8 @@
       '.rcz-searchtype{margin-left:6px !important;font-size:11px !important;font-weight:700 !important;letter-spacing:.02em !important;padding:2px 8px !important;border-radius:999px !important;line-height:1.5 !important;color:#fff !important;white-space:nowrap !important;}',
       '.rcz-searchtype.rcz-st-mem{background:#7b3fa0 !important;}',
       '.rcz-searchtype.rcz-st-tkt{background:#2f6fb0 !important;}',
-      '.rcz-searchtype.rcz-st-gift{background:#c2560c !important;}'
+      '.rcz-searchtype.rcz-st-gift{background:#c2560c !important;}',
+      '.rcz-searchtype.rcz-st-other{background:#5b6470 !important;}'
     );
     if (CFG.HIDE_MEMBER_TICK) rules.push(
       'body.rcz-hidetick .bip-summary-header app-icon-button:has(button[id^="check-in-button"]){display:none !important;}',
@@ -2575,7 +2590,11 @@
       badge.classList.toggle('rcz-st-mem', type === 'membership');
       badge.classList.toggle('rcz-st-gift', type === 'giftcard');
       badge.classList.toggle('rcz-st-tkt', type === 'tickets');
-      badge.textContent = type === 'membership' ? CFG.SEARCH_MEM_LABEL : type === 'giftcard' ? CFG.SEARCH_GIFT_LABEL : CFG.SEARCH_TKT_LABEL;
+      badge.classList.toggle('rcz-st-other', type === 'other');
+      badge.textContent = type === 'membership' ? CFG.SEARCH_MEM_LABEL
+                        : type === 'giftcard' ? CFG.SEARCH_GIFT_LABEL
+                        : type === 'other' ? CFG.SEARCH_OTHER_LABEL
+                        : CFG.SEARCH_TKT_LABEL;
     }
   }
 
