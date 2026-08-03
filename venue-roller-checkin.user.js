@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Venue — ROLLER Check-in Cards + Member Photos
 // @namespace    venue.roller.checkin-cards
-// @version      5.129
+// @version      5.130
 // @description  Reformats the ROLLER POS booking check-in list into full-frame photo cards, surfaces member photos on load (no Verify click), alerts when a member has no photo, handles family memberships (best-effort photos + add-name prompt) and close/similar name matches.
 // @match        https://pos.roller.app/*
 // @match        https://*.roller.app/*
@@ -53,6 +53,7 @@
     OPEN_ITEMS_LABEL:  'MEMBERSHIP PROFILES ONLY',  // relabel ROLLER's "OPEN ITEMS" section pill ('' = leave it as-is)
     TODAY_LABEL:       'TICKETS BOOKED FOR TODAY',   // relabel the grey "TODAY" section-header pill above the ticket tiles ('' = leave it). Only the grey (color--neutral) pill; the green "Today" status badge is untouched.
     BLOCK_WC_MEM_CHECKIN: true,  // hide the check-in shield on WONDER CLUB membership-PROFILE cards (the open-item profiles with the black "MEMBERSHIP: N USES" strip) so staff can't check them in there. Gold Pass profiles and normal tickets are unaffected.
+    HIDE_MEMBER_TICK: true,      // on a membership PROFILE detail page (member profile via search, or a membership item detail), hide ROLLER's check-in tick in the header. All member types. Leaves the Back button and ticket item details alone.
     // Age-type icons for casual/foster tiles (infant/child/adult), by ticket type. Populated with data:URIs
     // just below the CFG block (kept out of the literal so the base64 blobs don't clutter the config).
     AGE_ICONS:        {},
@@ -1552,6 +1553,10 @@
       injectGlobalStyle();
       hideRedeemButtons();
       ensureFileUploadBtn();   // "Choose a photo file" beside ROLLER's camera capture (runs on the member/item detail pages too, so it's before the activeRoute gate)
+      // On a membership PROFILE detail (member profile via search, or a membership item detail) tag <body> so
+      // the CSS hides ROLLER's header check-in tick. Only membership headers (product name contains
+      // "Membership") — plain ticket item details keep their tick.
+      if (CFG.HIDE_MEMBER_TICK) { var _mh = /^\/search\/(memberships\/\d+\/\d+|bookings\/\d+\/\d+)/.test(location.pathname) ? document.querySelector('.bip-summary-header') : null; document.body.classList.toggle('rcz-hidetick', !!(_mh && /membership/i.test(_mh.textContent || ''))); }
       if (membershipDetailRoute()) ensureBackButtons(); else removeBackButtons();
       if (!activeRoute()) {
         // not the booking check-in list -> strip our styling/overlays so ROLLER's native pages work
@@ -2235,6 +2240,10 @@
       '#booking-membership-verification-banner{display:none !important;}'
     ];
     if (CFG.HIDE_REDEEM) rules.push('#redeem-membership-button,app-generic-button:has(#redeem-membership-button){display:none !important;}');
+    if (CFG.HIDE_MEMBER_TICK) rules.push(
+      'body.rcz-hidetick .bip-summary-header app-icon-button:has(button[id^="check-in-button"]){display:none !important;}',
+      'body.rcz-hidetick .bip-summary-header button[id^="check-in-button"]{display:none !important;}'
+    );
     if (CFG.PHOTO_FILE_UPLOAD) rules.push(
       '.rcz-filewrap{display:flex !important;justify-content:center !important;margin:10px 0 4px !important;}',
       '.rcz-filebtn{display:flex !important;flex-direction:column !important;align-items:center !important;gap:2px !important;width:100% !important;max-width:220px !important;padding:10px 16px !important;border:1.5px dashed #9aa3af !important;border-radius:10px !important;background:#fff !important;cursor:pointer !important;text-align:center !important;}',
