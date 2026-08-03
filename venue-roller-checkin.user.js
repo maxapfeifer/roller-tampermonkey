@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Venue — ROLLER Check-in Cards + Member Photos
 // @namespace    venue.roller.checkin-cards
-// @version      5.139
+// @version      5.140
 // @description  Reformats the ROLLER POS booking check-in list into full-frame photo cards, surfaces member photos on load (no Verify click), alerts when a member has no photo, handles family memberships (best-effort photos + add-name prompt) and close/similar name matches.
 // @match        https://pos.roller.app/*
 // @match        https://*.roller.app/*
@@ -1045,11 +1045,19 @@
   function clrCasual(w) { w.classList.remove('rcz-casual-on'); var c = w.querySelector('.rcz-casual'); if (c) c.remove(); }
   // Age-type icon for casual/foster tiles (#2): map the ticket type to infant/child/adult and paint the
   // matching icon in the photo square (replacing ROLLER's blank person placeholder).
-  function ageIconKey(t) {
+  // Classify a ticket-type string into an admission age band, or null when it is NOT an admission (e.g. a gift
+  // card, retail item or visit package). Non-admissions have no age, so they must not default to "Adult".
+  function ageType(t) {
     t = String(t || '').toLowerCase();
     if (/infant|baby|under\s?1\b/.test(t)) return 'infant';
     if (/child|junior|youth|\bkid/.test(t)) return 'child';
-    return 'adult';
+    if (/adult|senior|concession|\b\d{1,2}\s*\+|\byears?\b|\byrs?\b/.test(t)) return 'adult';
+    return null;
+  }
+  function ageIconKey(t) { return ageType(t) || 'adult'; }   // icon fallback stays 'adult'
+  // Tidy a non-admission product type for the tile label: drop a leading "N x", trailing pricing and parentheticals.
+  function typeLabel(t) {
+    return String(t || '').replace(/^\s*\d+\s*x\s*/i, '').replace(/\s*@.*$/, '').replace(/\s*\([^)]*\)\s*/g, ' ').replace(/\s+/g, ' ').trim();
   }
   function setAgeIcon(btn, type) {
     if (!btn) return;
@@ -1065,8 +1073,10 @@
   // square — replaces the silhouette. Bottom bar still carries type+name; this just fills the empty photo area.
   function setAgeText(btn, typeRaw, name) {
     if (!btn) return;
-    var key = ageIconKey(typeRaw);
-    var ty = key.charAt(0).toUpperCase() + key.slice(1);   // Infant / Child / Adult
+    var at = ageType(typeRaw);
+    // Admission -> the age word (Infant/Child/Adult); non-admission (gift card, retail, package) -> its real
+    // product type ("Gift Card"), never a bogus "Adult".
+    var ty = at ? (at.charAt(0).toUpperCase() + at.slice(1)) : typeLabel(typeRaw);
     var nm = proper(firstName(name || ''));
     var oi = btn.querySelector('img.rcz-ageicon'); if (oi) oi.remove();   // drop any prior silhouette
     var mi = btn.querySelector('mat-icon'); if (mi) mi.style.display = 'none';
