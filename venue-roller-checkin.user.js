@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Venue — ROLLER Check-in Cards + Member Photos
 // @namespace    venue.roller.checkin-cards
-// @version      5.134
+// @version      5.135
 // @description  Reformats the ROLLER POS booking check-in list into full-frame photo cards, surfaces member photos on load (no Verify click), alerts when a member has no photo, handles family memberships (best-effort photos + add-name prompt) and close/similar name matches.
 // @match        https://pos.roller.app/*
 // @match        https://*.roller.app/*
@@ -50,7 +50,7 @@
     MISMATCH_ACTREQ_HD: 'FRAUD FLAG: NAME MISMATCH',              // heading on the name-mismatch action box
     MISMATCH_ACTREQ_SUB: 'PLEASE CHECK PHOTO EXTRA CAREFULLY',    // sub-line on the name-mismatch action box
     MISSING_PHOTOS_MSG: 'Add missing photos to avoid auto cancellation of memberships',  // reword ROLLER's "Missing member photos" banner sub-line (native text: "Add missing photos to help staff verify members quickly.")
-    OPEN_ITEMS_LABEL:  'MEMBERSHIP PROFILES ONLY',  // relabel ROLLER's "OPEN ITEMS" section pill ('' = leave it as-is)
+    OPEN_ITEMS_LABEL:  'These are membership profiles only - To check these guests in, find their tickets',  // relabel ROLLER's "OPEN ITEMS" section pill ('' = leave it as-is)
     TODAY_LABEL:       'TICKETS BOOKED FOR TODAY',   // relabel the grey "TODAY" section-header pill above the ticket tiles ('' = leave it). Only the grey (color--neutral) pill; the green "Today" status badge is untouched.
     BIG_SECTION_PILLS: true,                         // enlarge the grey section-header pills (~3x) so section boundaries are obvious; in-card status pills stay normal size
     DATE_PREFIX:       'TICKETS BOOKED FOR ',        // prefix grey DATE section-header pills, e.g. "11 May 2026" -> "TICKETS BOOKED FOR 11 May 2026" ('' = leave dates as-is)
@@ -796,10 +796,10 @@
       // one in the header actions) so profiles can't be bulk-checked-in. The "..." more-actions icon-button stays.
       'body.rcz-hidecheckinbtn .bip-list-header__actions app-generic-button:has(button.mat-mdc-unelevated-button){display:none !important;}',
       'body.rcz-hidecheckinbtn .bip-list-header__actions button.mat-mdc-unelevated-button{display:none !important;}',
-      // Grey section-header pills at ~3x (12px->36px text, 2px 8px->6px 24px padding). Tagged .rcz-sectionpill
+      // Grey section-header pills at ~2x (12px->24px text, 2px 8px->4px 16px padding). Tagged .rcz-sectionpill
       // in retextSectionPills (neutral pills not inside a card). In-card "Current" status pills are untouched.
-      '.rcz-sectionpill.ui-pill{padding:6px 24px !important;border-radius:999px !important;}',
-      '.rcz-sectionpill .ui-pill__text{font-size:36px !important;line-height:1.15 !important;}',
+      '.rcz-sectionpill.ui-pill{padding:4px 16px !important;border-radius:999px !important;}',
+      '.rcz-sectionpill .ui-pill__text{font-size:24px !important;line-height:1.15 !important;}',
       /* check-in button: 66px square sized to the name-label height; glyph scaled to match. Full box
          stays clickable; the shield (when on) is drawn as ::before so the whole square still taps. */
       'app-bip-summary:not(.rcz-skip) .summary__wrapper app-icon-button.align-top:has(button[id^="check-in-button"]) button{width:48px !important;height:48px !important;min-width:48px !important;min-height:48px !important;padding:0 !important;position:relative !important;overflow:visible !important;' + (CFG.SHOW_SHIELD ? 'background:transparent !important;border:none !important;box-shadow:none !important;border-radius:0 !important;' : 'border-radius:12px !important;box-shadow:0 2px 8px rgba(0,0,0,.35) !important;') + '}',
@@ -2423,7 +2423,7 @@
       if (node.matches('span.ui-pill__text') && !(node.closest && node.closest('app-bip-summary'))) {
         var t = (node.textContent || '').trim(); if (t) section = t;   // a real section header (not an in-card status pill)
       } else if (node.tagName === 'APP-BIP-SUMMARY') {
-        var profilesOnly = /^(open items|membership profiles only)$/i.test(section || '') && node.classList.contains('rcz-mem');
+        var profilesOnly = /(open items|membership profiles only)/i.test(section || '') && node.classList.contains('rcz-mem');
         node.classList.toggle('rcz-nocheckin', profilesOnly);
       }
     }
