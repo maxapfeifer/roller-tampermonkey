@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Venue — ROLLER Check-in Cards + Member Photos
 // @namespace    venue.roller.checkin-cards
-// @version      5.131
+// @version      5.132
 // @description  Reformats the ROLLER POS booking check-in list into full-frame photo cards, surfaces member photos on load (no Verify click), alerts when a member has no photo, handles family memberships (best-effort photos + add-name prompt) and close/similar name matches.
 // @match        https://pos.roller.app/*
 // @match        https://*.roller.app/*
@@ -790,6 +790,10 @@
       // hide the check-in tick entirely so a profile can't be checked in there. Dated-section tiles keep it.
       'app-bip-summary.rcz-nocheckin app-icon-button:has(button[id^="check-in-button"]){display:none !important;}',
       'app-bip-summary.rcz-nocheckin button[id^="check-in-button"]{display:none !important;}',
+      // When a membership profile is selected, hide ROLLER's blue bulk "check (N)" button (the filled/unelevated
+      // one in the header actions) so profiles can't be bulk-checked-in. The "..." more-actions icon-button stays.
+      'body.rcz-hidecheckinbtn .bip-list-header__actions app-generic-button:has(button.mat-mdc-unelevated-button){display:none !important;}',
+      'body.rcz-hidecheckinbtn .bip-list-header__actions button.mat-mdc-unelevated-button{display:none !important;}',
       /* check-in button: 66px square sized to the name-label height; glyph scaled to match. Full box
          stays clickable; the shield (when on) is drawn as ::before so the whole square still taps. */
       'app-bip-summary:not(.rcz-skip) .summary__wrapper app-icon-button.align-top:has(button[id^="check-in-button"]) button{width:48px !important;height:48px !important;min-width:48px !important;min-height:48px !important;padding:0 !important;position:relative !important;overflow:visible !important;' + (CFG.SHOW_SHIELD ? 'background:transparent !important;border:none !important;box-shadow:none !important;border-radius:0 !important;' : 'border-radius:12px !important;box-shadow:0 2px 8px rgba(0,0,0,.35) !important;') + '}',
@@ -1576,6 +1580,7 @@
       ensureShields();
       shorten();
       tagProfileOnlyCards();   // hide the check-in tick on membership tiles under "MEMBERSHIP PROFILES ONLY" (needs .rcz-mem from markSkips)
+      toggleBulkCheckinBtn();  // hide the blue bulk "check (N)" button when a membership profile is selected
       state.memLinks = membershipLinkMap();  // member name -> detail URL, scraped from the discounts panel
       document.querySelectorAll('app-bip-summary:not(.rcz-skip) .summary__wrapper').forEach(function (w) {
         var memHost = w.closest('app-bip-summary');
@@ -2408,6 +2413,18 @@
         node.classList.toggle('rcz-nocheckin', profilesOnly);
       }
     }
+  }
+  // Membership PROFILES must not be bulk-checked-in either: when any profile tile (.rcz-nocheckin) is selected
+  // via its top-left checkbox, hide ROLLER's blue bulk "check (N)" button in the header — the "..." more-actions
+  // menu stays (that's what the Undo flow drives). Selecting only real/dated tickets leaves the button available.
+  function toggleBulkCheckinBtn() {
+    if (!CFG.BLOCK_PROFILE_CHECKIN) return;
+    var anyProfileSelected = false;
+    document.querySelectorAll('app-bip-summary.rcz-nocheckin').forEach(function (c) {
+      var cb = c.querySelector('input[type="checkbox"]');
+      if (cb && cb.checked) anyProfileSelected = true;
+    });
+    document.body.classList.toggle('rcz-hidecheckinbtn', anyProfileSelected);
   }
 
   function boot() {
