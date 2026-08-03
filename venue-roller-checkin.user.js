@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Venue — ROLLER Check-in Cards + Member Photos
 // @namespace    venue.roller.checkin-cards
-// @version      5.137
+// @version      5.138
 // @description  Reformats the ROLLER POS booking check-in list into full-frame photo cards, surfaces member photos on load (no Verify click), alerts when a member has no photo, handles family memberships (best-effort photos + add-name prompt) and close/similar name matches.
 // @match        https://pos.roller.app/*
 // @match        https://*.roller.app/*
@@ -56,7 +56,7 @@
     BIG_SECTION_PILLS: true,                         // enlarge the grey section-header pills (~3x) so section boundaries are obvious; in-card status pills stay normal size
     DATE_PREFIX:       'TICKETS BOOKED FOR ',        // prefix grey DATE section-header pills, e.g. "11 May 2026" -> "TICKETS BOOKED FOR 11 May 2026" ('' = leave dates as-is)
     TAG_SEARCH_TYPES:  true,                         // badge each booking-search result as a MEMBERSHIP purchase vs attendance TICKET (from the search response's productName)
-    SEARCH_MEM_LABEL:  'MEMBERSHIP',                 // badge text for a membership-purchase search result
+    SEARCH_MEM_LABEL:  'M/SHIP',                      // badge text for a membership-purchase search result
     SEARCH_TKT_LABEL:  'TICKETS',                    // badge text for an attendance-ticket search result
     BLOCK_PROFILE_CHECKIN: true,  // hide the check-in tick on membership tiles under the "MEMBERSHIP PROFILES ONLY" (ROLLER's OPEN ITEMS) section — those are membership PROFILES, not a dated admission. ALL member types. Tiles under a DATE section (a real session booking) keep their tick.
     HIDE_MEMBER_TICK: true,      // on a membership PROFILE detail page (member profile via search, or a membership item detail), hide ROLLER's check-in tick in the header. All member types. Leaves the Back button and ticket item details alone.
@@ -236,8 +236,31 @@
         var g = JSON.parse(text); if (g && g.bookingItemPartId !== undefined) resolveFromMemberPart(g.bookingItemPartId, g.imageFileName || null);
       } else if (url.indexOf('keyword-search') > -1) {
         indexSearchResults(JSON.parse(text));
+      } else if (url.indexOf('/api/bookings/today') > -1) {
+        indexTodayBookings(JSON.parse(text));
       }
     } catch (e) {}
+  }
+  // Today's bookings are served from an in-memory cache loaded from GET /api/bookings/today at app boot (and
+  // topped up by ?modifiedDate= deltas). Searches that match TODAY's guests filter that cache client-side with NO
+  // keyword-search call, so we must index this response too to badge those rows. We hook at document-start, so we
+  // catch the boot load. Field names differ from keyword-search, so we probe defensively (and stash a debug sample).
+  function indexTodayBookings(j) {
+    if (!j) return;
+    var arr = Array.isArray(j) ? j : (j.bookings || j.data || j.items || j.results || []);
+    if (!arr || !arr.length) return;
+    try { window.__rczTodayDbg = { len: arr.length, keys: Object.keys(arr[0]), sample: arr[0] }; } catch (e) {}  // DEBUG (remove after confirming fields)
+    arr.forEach(function (o) {
+      if (!o) return;
+      var receipt = o.receiptNumber != null ? o.receiptNumber
+                  : o.bookingReceiptNumber != null ? o.bookingReceiptNumber
+                  : o.receipt != null ? o.receipt : null;
+      if (receipt == null) return;
+      var product = o.productName || o.productSummary || o.products || o.productDescription || '';
+      if (!product && Array.isArray(o.bipDetail)) product = o.bipDetail.map(function (b) { return b.name || b.productName || ''; }).join(', ');
+      state.searchTypes[receipt] = { membership: isMembershipProduct(product), product: String(product || '') };
+    });
+    setTimeout(tagSearchRows, 0);  // rows may already be on screen (or render right after) -> tag them now
   }
   // The booking search (POST /api/bookings/keyword-search) returns a productName per result even though ROLLER
   // doesn't show it in the list. We index receiptNumber (the # shown on each row) -> membership? so tagSearchRows()
@@ -249,6 +272,7 @@
       if (!o || o.receiptNumber == null) return;
       state.searchTypes[o.receiptNumber] = { membership: isMembershipProduct(o.productName), product: o.productName || '' };
     });
+    setTimeout(tagSearchRows, 0);  // rows may already be rendered when the response lands -> re-tag now
   }
   // A booking is a membership purchase (not an admission) when its product text names a membership tier/product.
   function isMembershipProduct(name) { return /wonder club|gold pass|\bmembership\b|unlocks/i.test(String(name || '')); }
@@ -260,7 +284,7 @@
   X.send = function () {
     var xhr = this, u = String(xhr.__rczUrl || '');
     if (u.indexOf('/api/') > -1) stashAuth(u, xhr.__rczHdr);
-    if (/\/api\/bookings\/\d+(\?|$)/.test(u) || u.indexOf('get-membership') > -1 || u.indexOf('keyword-search') > -1) {
+    if (/\/api\/bookings\/\d+(\?|$)/.test(u) || u.indexOf('get-membership') > -1 || u.indexOf('keyword-search') > -1 || u.indexOf('/api/bookings/today') > -1) {
       xhr.addEventListener('load', function () { onResponse(u, xhr.responseText); });
     }
     return oSend.apply(this, arguments);
@@ -275,7 +299,7 @@
       if (String(url).indexOf('/api/') > -1) stashAuth(url, hdrs);
     } catch (e) {}
     return oFetch.apply(this, args).then(function (res) {
-      try { var u = (res && res.url) || url; if (/\/api\/bookings\/\d+(\?|$)/.test(String(u)) || String(u).indexOf('get-membership') > -1 || String(u).indexOf('keyword-search') > -1) res.clone().text().then(function (t) { onResponse(u, t); }).catch(function () {}); } catch (e) {}
+      try { var u = (res && res.url) || url; if (/\/api\/bookings\/\d+(\?|$)/.test(String(u)) || String(u).indexOf('get-membership') > -1 || String(u).indexOf('keyword-search') > -1 || String(u).indexOf('/api/bookings/today') > -1) res.clone().text().then(function (t) { onResponse(u, t); }).catch(function () {}); } catch (e) {}
       return res;
     });
   };
