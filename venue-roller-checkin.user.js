@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Venue — ROLLER Check-in Cards + Member Photos
 // @namespace    venue.roller.checkin-cards
-// @version      5.132
+// @version      5.133
 // @description  Reformats the ROLLER POS booking check-in list into full-frame photo cards, surfaces member photos on load (no Verify click), alerts when a member has no photo, handles family memberships (best-effort photos + add-name prompt) and close/similar name matches.
 // @match        https://pos.roller.app/*
 // @match        https://*.roller.app/*
@@ -52,6 +52,7 @@
     MISSING_PHOTOS_MSG: 'Add missing photos to avoid auto cancellation of memberships',  // reword ROLLER's "Missing member photos" banner sub-line (native text: "Add missing photos to help staff verify members quickly.")
     OPEN_ITEMS_LABEL:  'MEMBERSHIP PROFILES ONLY',  // relabel ROLLER's "OPEN ITEMS" section pill ('' = leave it as-is)
     TODAY_LABEL:       'TICKETS BOOKED FOR TODAY',   // relabel the grey "TODAY" section-header pill above the ticket tiles ('' = leave it). Only the grey (color--neutral) pill; the green "Today" status badge is untouched.
+    BIG_SECTION_PILLS: true,                         // enlarge the grey section-header pills (~3x) so section boundaries are obvious; in-card status pills stay normal size
     BLOCK_PROFILE_CHECKIN: true,  // hide the check-in tick on membership tiles under the "MEMBERSHIP PROFILES ONLY" (ROLLER's OPEN ITEMS) section — those are membership PROFILES, not a dated admission. ALL member types. Tiles under a DATE section (a real session booking) keep their tick.
     HIDE_MEMBER_TICK: true,      // on a membership PROFILE detail page (member profile via search, or a membership item detail), hide ROLLER's check-in tick in the header. All member types. Leaves the Back button and ticket item details alone.
     // Age-type icons for casual/foster tiles (infant/child/adult), by ticket type. Populated with data:URIs
@@ -794,6 +795,10 @@
       // one in the header actions) so profiles can't be bulk-checked-in. The "..." more-actions icon-button stays.
       'body.rcz-hidecheckinbtn .bip-list-header__actions app-generic-button:has(button.mat-mdc-unelevated-button){display:none !important;}',
       'body.rcz-hidecheckinbtn .bip-list-header__actions button.mat-mdc-unelevated-button{display:none !important;}',
+      // Grey section-header pills at ~3x (12px->36px text, 2px 8px->6px 24px padding). Tagged .rcz-sectionpill
+      // in retextSectionPills (neutral pills not inside a card). In-card "Current" status pills are untouched.
+      '.rcz-sectionpill.ui-pill{padding:6px 24px !important;border-radius:999px !important;}',
+      '.rcz-sectionpill .ui-pill__text{font-size:36px !important;line-height:1.15 !important;}',
       /* check-in button: 66px square sized to the name-label height; glyph scaled to match. Full box
          stays clickable; the shield (when on) is drawn as ::before so the whole square still taps. */
       'app-bip-summary:not(.rcz-skip) .summary__wrapper app-icon-button.align-top:has(button[id^="check-in-button"]) button{width:48px !important;height:48px !important;min-width:48px !important;min-height:48px !important;padding:0 !important;position:relative !important;overflow:visible !important;' + (CFG.SHOW_SHIELD ? 'background:transparent !important;border:none !important;box-shadow:none !important;border-radius:0 !important;' : 'border-radius:12px !important;box-shadow:0 2px 8px rgba(0,0,0,.35) !important;') + '}',
@@ -2393,6 +2398,11 @@
       var s = els[i], t = s.textContent || '', pill = s.parentElement;
       if (CFG.OPEN_ITEMS_LABEL && /^\s*open items\s*$/i.test(t) && t !== CFG.OPEN_ITEMS_LABEL) s.textContent = CFG.OPEN_ITEMS_LABEL;
       if (CFG.TODAY_LABEL && /^\s*today\s*$/i.test(t) && t !== CFG.TODAY_LABEL && pill && /color--neutral/.test(pill.className || '')) s.textContent = CFG.TODAY_LABEL;
+      // Enlarge the grey SECTION-HEADER pills (neutral, not inside a card): "MEMBERSHIP PROFILES ONLY",
+      // "TICKETS BOOKED FOR TODAY", date headers. Skip in-card status pills ("Current") — those stay small.
+      if (CFG.BIG_SECTION_PILLS && pill && /color--neutral/.test(pill.className || '') && !(s.closest && s.closest('app-bip-summary'))) {
+        pill.classList.add('rcz-sectionpill');
+      }
     }
   }
   // Hide the check-in tick on membership tiles that sit under the "MEMBERSHIP PROFILES ONLY" (ROLLER's OPEN
