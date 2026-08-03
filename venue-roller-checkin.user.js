@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Venue — ROLLER Check-in Cards + Member Photos
 // @namespace    venue.roller.checkin-cards
-// @version      5.140
+// @version      5.141
 // @description  Reformats the ROLLER POS booking check-in list into full-frame photo cards, surfaces member photos on load (no Verify click), alerts when a member has no photo, handles family memberships (best-effort photos + add-name prompt) and close/similar name matches.
 // @match        https://pos.roller.app/*
 // @match        https://*.roller.app/*
@@ -2468,18 +2468,9 @@
     var els = document.querySelectorAll('span.ui-pill__text');
     for (var i = 0; i < els.length; i++) {
       var s = els[i], t = s.textContent || '', pill = s.parentElement;
-      if (CFG.OPEN_ITEMS_LABEL && /^\s*open items\s*$/i.test(t)) {
-        // Two-part label: main text + a smaller second line (rcz-pill-sub). Built as DOM nodes so it re-applies
-        // only against ROLLER's native "OPEN ITEMS" text (the guard above), staying idempotent on re-render.
-        while (s.firstChild) s.removeChild(s.firstChild);
-        s.appendChild(document.createTextNode(CFG.OPEN_ITEMS_LABEL));
-        if (CFG.OPEN_ITEMS_SUB) {
-          var sub = document.createElement('span');
-          sub.className = 'rcz-pill-sub';
-          sub.textContent = CFG.OPEN_ITEMS_SUB;
-          s.appendChild(sub);
-        }
-      }
+      // NB: the "OPEN ITEMS" -> "Membership profiles below" relabel is NOT done here — it must only apply when the
+      // section actually holds membership profiles (an OPEN ITEMS section can be gift-cards/add-ons only). That
+      // decision needs .rcz-mem (set later by markSkips), so it lives in tagProfileOnlyCards via setOpenItemsLabel().
       if (CFG.TODAY_LABEL && /^\s*today\s*$/i.test(t) && t !== CFG.TODAY_LABEL && pill && /color--neutral/.test(pill.className || '')) s.textContent = CFG.TODAY_LABEL;
       // Date section header (e.g. "11 May 2026") -> "TICKETS BOOKED FOR 11 May 2026". Grey neutral pill not in a
       // card; idempotent (skip if already prefixed). CSS uppercases it for display.
@@ -2497,18 +2488,52 @@
   // list in document order tracking the current SECTION header — a ui-pill NOT inside a card (each card has
   // its own "Current" status pill, which we must ignore) — and tag membership cards under the profiles section
   // with .rcz-nocheckin (the CSS then hides their shield/tick).
+  // Set the "OPEN ITEMS" section header to our two-part "Membership profiles below" label (idempotent).
+  function setOpenItemsLabel(span) {
+    if (!span || !CFG.OPEN_ITEMS_LABEL || span.querySelector('.rcz-pill-sub')) return;   // already relabeled
+    while (span.firstChild) span.removeChild(span.firstChild);
+    span.appendChild(document.createTextNode(CFG.OPEN_ITEMS_LABEL));
+    if (CFG.OPEN_ITEMS_SUB) {
+      var sub = document.createElement('span');
+      sub.className = 'rcz-pill-sub';
+      sub.textContent = CFG.OPEN_ITEMS_SUB;
+      span.appendChild(sub);
+    }
+  }
+  // Restore ROLLER's original "OPEN ITEMS" text (used when the section turns out to hold no membership profiles,
+  // e.g. a gift-card-only booking — it must not be mislabelled "Membership profiles below").
+  function clearOpenItemsLabel(span) {
+    if (!span || !span.querySelector('.rcz-pill-sub')) return;
+    span.textContent = 'OPEN ITEMS';
+  }
+  // Walk the list in document order tracking the current SECTION header (a ui-pill NOT inside a card — each card
+  // has its own "Current" status pill, which we ignore). For the OPEN ITEMS section: only relabel it "Membership
+  // profiles below" and hide the check-in tick when it actually contains membership profiles (.rcz-mem, set by
+  // markSkips). A gift-card / add-on OPEN ITEMS section keeps ROLLER's heading and its normal tick. Tiles under a
+  // DATE section (a real dated booking) are always checkable.
   function tagProfileOnlyCards() {
     if (!CFG.BLOCK_PROFILE_CHECKIN) return;
     var main = document.querySelector('.panel__main-inner'); if (!main) return;
-    var walker = document.createTreeWalker(main, NodeFilter.SHOW_ELEMENT, null), node, section = null;
+    var walker = document.createTreeWalker(main, NodeFilter.SHOW_ELEMENT, null), node;
+    var openPill = null, openCards = [], openHasMember = false;   // current OPEN ITEMS section state
+    function finalize() {
+      if (!openPill) return;
+      if (openHasMember) setOpenItemsLabel(openPill); else clearOpenItemsLabel(openPill);
+      openCards.forEach(function (c) { c.classList.toggle('rcz-nocheckin', c.classList.contains('rcz-mem')); });
+      openPill = null; openCards = []; openHasMember = false;
+    }
     while ((node = walker.nextNode())) {
       if (node.matches('span.ui-pill__text') && !(node.closest && node.closest('app-bip-summary'))) {
-        var t = (node.textContent || '').trim(); if (t) section = t;   // a real section header (not an in-card status pill)
+        finalize();   // a new section header closes the previous one
+        var raw = (node.textContent || '').trim();
+        var isOpen = /open items/i.test(raw) || (CFG.OPEN_ITEMS_LABEL && raw.indexOf(CFG.OPEN_ITEMS_LABEL) === 0) || !!(node.querySelector && node.querySelector('.rcz-pill-sub'));
+        openPill = isOpen ? node : null;
       } else if (node.tagName === 'APP-BIP-SUMMARY') {
-        var profilesOnly = /(open items|membership profiles)/i.test(section || '') && node.classList.contains('rcz-mem');
-        node.classList.toggle('rcz-nocheckin', profilesOnly);
+        if (openPill) { openCards.push(node); if (node.classList.contains('rcz-mem')) openHasMember = true; }
+        else node.classList.remove('rcz-nocheckin');   // a dated-section card is always checkable
       }
     }
+    finalize();
   }
   // Membership PROFILES must not be bulk-checked-in either: when any profile tile (.rcz-nocheckin) is selected
   // via its top-left checkbox, hide ROLLER's blue bulk "check (N)" button in the header — the "..." more-actions
