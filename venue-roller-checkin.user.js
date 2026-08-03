@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Venue — ROLLER Check-in Cards + Member Photos
 // @namespace    venue.roller.checkin-cards
-// @version      5.135
+// @version      5.136
 // @description  Reformats the ROLLER POS booking check-in list into full-frame photo cards, surfaces member photos on load (no Verify click), alerts when a member has no photo, handles family memberships (best-effort photos + add-name prompt) and close/similar name matches.
 // @match        https://pos.roller.app/*
 // @match        https://*.roller.app/*
@@ -50,7 +50,8 @@
     MISMATCH_ACTREQ_HD: 'FRAUD FLAG: NAME MISMATCH',              // heading on the name-mismatch action box
     MISMATCH_ACTREQ_SUB: 'PLEASE CHECK PHOTO EXTRA CAREFULLY',    // sub-line on the name-mismatch action box
     MISSING_PHOTOS_MSG: 'Add missing photos to avoid auto cancellation of memberships',  // reword ROLLER's "Missing member photos" banner sub-line (native text: "Add missing photos to help staff verify members quickly.")
-    OPEN_ITEMS_LABEL:  'These are membership profiles only - To check these guests in, find their tickets',  // relabel ROLLER's "OPEN ITEMS" section pill ('' = leave it as-is)
+    OPEN_ITEMS_LABEL:  'Membership profiles below',  // relabel ROLLER's "OPEN ITEMS" section pill ('' = leave it as-is)
+    OPEN_ITEMS_SUB:    '(If you’re trying to check these guests in, please find or add tickets)',  // smaller second line under OPEN_ITEMS_LABEL ('' = none)
     TODAY_LABEL:       'TICKETS BOOKED FOR TODAY',   // relabel the grey "TODAY" section-header pill above the ticket tiles ('' = leave it). Only the grey (color--neutral) pill; the green "Today" status badge is untouched.
     BIG_SECTION_PILLS: true,                         // enlarge the grey section-header pills (~3x) so section boundaries are obvious; in-card status pills stay normal size
     DATE_PREFIX:       'TICKETS BOOKED FOR ',        // prefix grey DATE section-header pills, e.g. "11 May 2026" -> "TICKETS BOOKED FOR 11 May 2026" ('' = leave dates as-is)
@@ -800,6 +801,8 @@
       // in retextSectionPills (neutral pills not inside a card). In-card "Current" status pills are untouched.
       '.rcz-sectionpill.ui-pill{padding:4px 16px !important;border-radius:999px !important;}',
       '.rcz-sectionpill .ui-pill__text{font-size:24px !important;line-height:1.15 !important;}',
+      // Smaller second line under "Membership profiles below" — sentence case (no uppercase), lighter, its own line.
+      '.rcz-sectionpill .rcz-pill-sub{display:block;font-size:14px !important;font-weight:400 !important;line-height:1.25 !important;text-transform:none !important;opacity:.9;margin-top:1px;}',
       /* check-in button: 66px square sized to the name-label height; glyph scaled to match. Full box
          stays clickable; the shield (when on) is drawn as ::before so the whole square still taps. */
       'app-bip-summary:not(.rcz-skip) .summary__wrapper app-icon-button.align-top:has(button[id^="check-in-button"]) button{width:48px !important;height:48px !important;min-width:48px !important;min-height:48px !important;padding:0 !important;position:relative !important;overflow:visible !important;' + (CFG.SHOW_SHIELD ? 'background:transparent !important;border:none !important;box-shadow:none !important;border-radius:0 !important;' : 'border-radius:12px !important;box-shadow:0 2px 8px rgba(0,0,0,.35) !important;') + '}',
@@ -2397,7 +2400,18 @@
     var els = document.querySelectorAll('span.ui-pill__text');
     for (var i = 0; i < els.length; i++) {
       var s = els[i], t = s.textContent || '', pill = s.parentElement;
-      if (CFG.OPEN_ITEMS_LABEL && /^\s*open items\s*$/i.test(t) && t !== CFG.OPEN_ITEMS_LABEL) s.textContent = CFG.OPEN_ITEMS_LABEL;
+      if (CFG.OPEN_ITEMS_LABEL && /^\s*open items\s*$/i.test(t)) {
+        // Two-part label: main text + a smaller second line (rcz-pill-sub). Built as DOM nodes so it re-applies
+        // only against ROLLER's native "OPEN ITEMS" text (the guard above), staying idempotent on re-render.
+        while (s.firstChild) s.removeChild(s.firstChild);
+        s.appendChild(document.createTextNode(CFG.OPEN_ITEMS_LABEL));
+        if (CFG.OPEN_ITEMS_SUB) {
+          var sub = document.createElement('span');
+          sub.className = 'rcz-pill-sub';
+          sub.textContent = CFG.OPEN_ITEMS_SUB;
+          s.appendChild(sub);
+        }
+      }
       if (CFG.TODAY_LABEL && /^\s*today\s*$/i.test(t) && t !== CFG.TODAY_LABEL && pill && /color--neutral/.test(pill.className || '')) s.textContent = CFG.TODAY_LABEL;
       // Date section header (e.g. "11 May 2026") -> "TICKETS BOOKED FOR 11 May 2026". Grey neutral pill not in a
       // card; idempotent (skip if already prefixed). CSS uppercases it for display.
@@ -2423,7 +2437,7 @@
       if (node.matches('span.ui-pill__text') && !(node.closest && node.closest('app-bip-summary'))) {
         var t = (node.textContent || '').trim(); if (t) section = t;   // a real section header (not an in-card status pill)
       } else if (node.tagName === 'APP-BIP-SUMMARY') {
-        var profilesOnly = /(open items|membership profiles only)/i.test(section || '') && node.classList.contains('rcz-mem');
+        var profilesOnly = /(open items|membership profiles)/i.test(section || '') && node.classList.contains('rcz-mem');
         node.classList.toggle('rcz-nocheckin', profilesOnly);
       }
     }
