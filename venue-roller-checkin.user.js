@@ -250,6 +250,7 @@
     if (!j) return;
     var arr = Array.isArray(j) ? j : (j.bookings || j.data || j.items || j.results || []);
     if (!arr || !arr.length) return;
+    try { window.__rczTodayRaw = arr; } catch (e) {}   // DEBUG (temp): expose raw today data to inspect fields
     arr.forEach(function (o) {
       if (!o) return;
       var receipt = o.receiptNumber != null ? o.receiptNumber
