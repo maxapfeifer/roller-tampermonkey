@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Venue — ROLLER Check-in Cards + Member Photos
 // @namespace    venue.roller.checkin-cards
-// @version      5.146
+// @version      5.147
 // @description  Reformats the ROLLER POS booking check-in list into full-frame photo cards, surfaces member photos on load (no Verify click), alerts when a member has no photo, handles family memberships (best-effort photos + add-name prompt) and close/similar name matches.
 // @match        https://pos.roller.app/*
 // @match        https://*.roller.app/*
@@ -1673,6 +1673,18 @@
         document.querySelectorAll('.rcz-alert-on, .rcz-casual-on, .rcz-mismatch-on, .rcz-visiting-on, .rcz-mmnames-on, .rcz-locked').forEach(function (w) { w.classList.remove('rcz-alert-on', 'rcz-casual-on', 'rcz-mismatch-on', 'rcz-visiting-on', 'rcz-mmnames-on', 'rcz-locked'); });
         document.querySelectorAll('app-bip-summary.rcz-mem, app-bip-summary.rcz-skip').forEach(function (h) { h.classList.remove('rcz-mem', 'rcz-skip'); });
         document.querySelectorAll('app-bip-summary:not(.rcz-skip) button[id^="booking-details-button-"] mat-icon').forEach(function (ic) { ic.style.display = ''; });
+        // A VISITING (other-museum) member's photo does NOT sync back to their home venue, so staff must ALWAYS
+        // be reminded to send it to admin — not only when they used our ADD PHOTO link. Arm the handoff whenever
+        // they're on such a member's photo tab by ANY route (ADD PHOTO, the "Choose a photo file" button, or
+        // manual navigation). The promote-to-ready line + fire-on-return then show the reminder back on the
+        // booking. state.byCard (keyed by bookingItemPartId) persists across the in-app nav from the booking.
+        try {
+          var _vm = location.pathname.match(/^\/search\/bookings\/(\d+)\/(\d+)/);
+          if (_vm && document.querySelector('.image-capture')) {
+            var _vc = state.byCard[_vm[2]], _mine = _vm[1] + ':' + _vm[2], _cur = sessionStorage.getItem('rcz-handoff') || '';
+            if (_vc && _vc.visiting && _cur.indexOf(_mine) < 0) sessionStorage.setItem('rcz-handoff', 'armed:' + _mine);
+          }
+        } catch (e) {}
         // #4: we've left the booking screen (e.g. onto the photo tab) -> promote an armed handoff to "ready"
         try { var _hf = sessionStorage.getItem('rcz-handoff'); if (_hf && _hf.indexOf('armed:') === 0) sessionStorage.setItem('rcz-handoff', 'ready:' + _hf.slice(6)); } catch (e) {}
         return;
