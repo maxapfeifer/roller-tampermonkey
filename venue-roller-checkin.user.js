@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Venue — ROLLER Check-in Cards + Member Photos
 // @namespace    venue.roller.checkin-cards
-// @version      5.145
+// @version      5.146
 // @description  Reformats the ROLLER POS booking check-in list into full-frame photo cards, surfaces member photos on load (no Verify click), alerts when a member has no photo, handles family memberships (best-effort photos + add-name prompt) and close/similar name matches.
 // @match        https://pos.roller.app/*
 // @match        https://*.roller.app/*
@@ -408,7 +408,19 @@
       var j = state.booking; if (!j) return;
       var bip = Array.isArray(j.bipDetail) ? j.bipDetail : [];
       var discs = (j.discounts || []).map(function (d) {
-        return { raw: d.memberName, name: firstName(d.memberName), amount: d.amount, pct: d.percentageOff, r: d.memberReceiptNumber, b: d.memberBookingItemPartId, used: false, foster: isFosterDisc(d) };
+        var r = d.memberReceiptNumber, b = d.memberBookingItemPartId;
+        // Visiting / reciprocal membership redeemed at the DESK (vs online): ROLLER records the member
+        // reference only in the discount CODE ("<receiptNumber>-<bookingItemPartId>") and leaves memberName,
+        // memberReceiptNumber and memberBookingItemPartId all null. Recover r/b from that code so the ticket is
+        // treated as a (visiting) membership and can resolve the member via /get-membership — instead of being
+        // dropped as a manual/ad-hoc discount (b/r/name all null) and shown as a plain casual guest. A genuine
+        // manual discount has no "<n>-<n>" code, so this never re-catches the manual-discount case. (Online
+        // bookings populate memberName/r/b directly, which is why they link the profile and these didn't.)
+        if (r == null && b == null) {
+          var cm = String(d.code || '').match(/^(\d+)-(\d+)$/);
+          if (cm) { r = Number(cm[1]); b = Number(cm[2]); }
+        }
+        return { raw: d.memberName, name: firstName(d.memberName), amount: d.amount, pct: d.percentageOff, r: r, b: b, used: false, foster: isFosterDisc(d) };
       });
       // Foster-care partnership (e.g. MacKillop Family Services): a plain discount CODE that zeroes entry so
       // partner guests come in free. It is NOT a membership (no memberName / member slot). When the booking
