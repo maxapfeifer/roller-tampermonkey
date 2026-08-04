@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Venue — ROLLER Check-in Cards + Member Photos
 // @namespace    venue.roller.checkin-cards
-// @version      5.149
+// @version      5.150
 // @description  Reformats the ROLLER POS booking check-in list into full-frame photo cards, surfaces member photos on load (no Verify click), alerts when a member has no photo, handles family memberships (best-effort photos + add-name prompt) and close/similar name matches.
 // @match        https://pos.roller.app/*
 // @match        https://*.roller.app/*
@@ -47,6 +47,7 @@
     REDEEM_NOPHOTO_HD:  'WARNING:',    // first line of that warning
     REDEEM_NOPHOTO_SUB: 'PHOTO REQUIRED',  // second line (wraps to fill the small grey square)
     DASHBOARD_GUESTS_MINUS_MEMBERSHIPS: true,  // on manage.roller.app dashboard, display "Guests booked" NET of "New memberships" (guests - new memberships)
+    DASHBOARD_HIDE_FINANCIALS: true,           // on manage.roller.app dashboard, remove the "Funds received" + "Revenue" summary tiles and the "Funds received ($)" product-sales column
     DONE_STEP_BACK:   true,   // after "Done" on a child member page, step back past the parent page it pushes
     FLAG_MISASSIGNED: false,  // OFF: a discount mis-assignment where the real member IS on the booking shows nothing (normal member). Set true to restore the "MEMBERSHIP DISCOUNT MIS-ASSIGNED" reassurance note.
     WARN_HEADING:     'WARNING: MISSING DATA',                   // ACTION REQUIRED banner big heading (missing-data / ADD PHOTO box only)
@@ -2432,11 +2433,33 @@
   // The dashboard renders inside a same-origin iframe, so we operate on this frame's document AND any same-origin
   // child iframe (covers running whether the script is injected into the iframe or the top frame). Idempotent via
   // data-rcz-orig/adj markers so a re-run never double-subtracts.
-  function adjustGuestsBooked() {
-    if (!CFG.DASHBOARD_GUESTS_MINUS_MEMBERSHIPS) return;
+  function adjustGuestsBooked() {   // dispatcher for all manage.roller.app dashboard tweaks (kept name; called from render + interval)
+    if (!CFG.DASHBOARD_GUESTS_MINUS_MEMBERSHIPS && !CFG.DASHBOARD_HIDE_FINANCIALS) return;
     var docs = [document];
     try { document.querySelectorAll('iframe').forEach(function (f) { try { if (f.contentDocument) docs.push(f.contentDocument); } catch (e) {} }); } catch (e) {}
-    for (var i = 0; i < docs.length; i++) { try { adjustGuestsBookedIn(docs[i]); } catch (e) {} }
+    for (var i = 0; i < docs.length; i++) {
+      if (CFG.DASHBOARD_GUESTS_MINUS_MEMBERSHIPS) { try { adjustGuestsBookedIn(docs[i]); } catch (e) {} }
+      if (CFG.DASHBOARD_HIDE_FINANCIALS) { try { hideDashboardFinancialsIn(docs[i]); } catch (e) {} }
+    }
+  }
+  // Dashboard: remove the "Funds received" + "Revenue" summary tiles, and the "Funds received ($)" column of the
+  // "Accumulated product sales" grid (a DevExtreme datagrid — header & body are separate tables aligned by
+  // aria-colindex, so hide every cell at that colindex + zero the matching colgroup <col> so the table reflows).
+  // Idempotent (each style set only when needed); re-applied by render + the interval as the grid re-renders.
+  function hideDashboardFinancialsIn(doc) {
+    ['Funds received', 'Revenue'].forEach(function (name) {
+      var h = doc.querySelector('[qa-id="dashboard-info-' + name + '"]');
+      if (h && h.parentElement && h.parentElement.style.display !== 'none') h.parentElement.style.display = 'none';
+    });
+    var grid = null;
+    doc.querySelectorAll('.dx-datagrid').forEach(function (g) { var hr = g.querySelector('.dx-header-row'); if (hr && /funds received/i.test(hr.textContent || '')) grid = g; });
+    if (!grid) return;
+    var hr = grid.querySelector('.dx-header-row'), col = null;
+    Array.prototype.forEach.call(hr.children, function (td) { if (/funds received/i.test(td.textContent || '')) col = td.getAttribute('aria-colindex'); });
+    if (!col) return;
+    grid.querySelectorAll('[aria-colindex="' + col + '"]').forEach(function (c) { if (c.style.display !== 'none') c.style.display = 'none'; });
+    var ci = parseInt(col, 10) - 1;
+    grid.querySelectorAll('colgroup').forEach(function (cg) { if (cg.children[ci] && cg.children[ci].style.width !== '0px') cg.children[ci].style.width = '0px'; });
   }
   function adjustGuestsBookedIn(doc) {
     var lbl = doc.querySelector('h3[qa-id="dashboard-info-Guests booked"]'); if (!lbl) return;
@@ -2713,7 +2736,7 @@
     obs.observe(document.documentElement, { childList: true, subtree: true });
     // manage.roller.app dashboard refreshes its figures on its own timer inside a same-origin iframe; a periodic
     // re-apply guarantees the "Guests booked" net stays correct even if a mutation isn't observed in this frame.
-    if (CFG.DASHBOARD_GUESTS_MINUS_MEMBERSHIPS && location.hostname === 'manage.roller.app') setInterval(adjustGuestsBooked, 1500);
+    if ((CFG.DASHBOARD_GUESTS_MINUS_MEMBERSHIPS || CFG.DASHBOARD_HIDE_FINANCIALS) && location.hostname === 'manage.roller.app') setInterval(adjustGuestsBooked, 1500);
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
   else boot();
