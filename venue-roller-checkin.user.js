@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Venue — ROLLER Check-in Cards + Member Photos
 // @namespace    venue.roller.checkin-cards
-// @version      5.147
+// @version      5.148
 // @description  Reformats the ROLLER POS booking check-in list into full-frame photo cards, surfaces member photos on load (no Verify click), alerts when a member has no photo, handles family memberships (best-effort photos + add-name prompt) and close/similar name matches.
 // @match        https://pos.roller.app/*
 // @match        https://*.roller.app/*
@@ -43,6 +43,9 @@
     FOSTER_LABEL:     'Foster CARE Ticket',
     PHOTO_FILE_UPLOAD: true,  // add a "Choose a photo file / drag-drop" button by ROLLER's camera capture, feeding the chosen image into ROLLER's own Capture pipeline
     HIDE_REDEEM:      true,   // hide ROLLER's "Redeem membership" button everywhere
+    LABEL_REDEEM_NOPHOTO: true,        // overlay a "no photo on file" warning on the grey placeholder in ROLLER's Redeem-membership panel
+    REDEEM_NOPHOTO_HD:  'WARNING:',    // first line of that warning
+    REDEEM_NOPHOTO_SUB: 'PHOTO REQUIRED',  // second line (wraps to fill the small grey square)
     DONE_STEP_BACK:   true,   // after "Done" on a child member page, step back past the parent page it pushes
     FLAG_MISASSIGNED: false,  // OFF: a discount mis-assignment where the real member IS on the booking shows nothing (normal member). Set true to restore the "MEMBERSHIP DISCOUNT MIS-ASSIGNED" reassurance note.
     WARN_HEADING:     'WARNING: MISSING DATA',                   // ACTION REQUIRED banner big heading (missing-data / ADD PHOTO box only)
@@ -1659,6 +1662,7 @@
     try {
       injectGlobalStyle();
       hideRedeemButtons();
+      labelRedeemNoPhoto();    // "PHOTO REQUIRED" warning on the grey no-photo tile in the Redeem-membership dialog (any route)
       ensureFileUploadBtn();   // "Choose a photo file" beside ROLLER's camera capture (runs on the member/item detail pages too, so it's before the activeRoute gate)
       tagSearchRows();         // badge search-result rows MEMBERSHIP vs TICKETS (search list isn't the activeRoute, so before the gate)
       // On a membership PROFILE detail (member profile via search, or a membership item detail) tag <body> so
@@ -2362,6 +2366,15 @@
       '#booking-membership-verification-banner{display:none !important;}'
     ];
     if (CFG.HIDE_REDEEM) rules.push('#redeem-membership-button,app-generic-button:has(#redeem-membership-button){display:none !important;}');
+    if (CFG.LABEL_REDEEM_NOPHOTO) rules.push(
+      // Warn on the grey no-photo placeholder in the Redeem-membership dialog. Scoped to that dialog, and the
+      // placeholder only renders when the member has NO photo, so the warning shows exactly when it should.
+      // Sized in cqw (container = the placeholder) so the text fills the small square whatever its size.
+      'app-dialog-redeem-membership .membership-card__image-placeholder{position:relative !important;container-type:inline-size !important;overflow:hidden !important;}',
+      '.rcz-nophoto-warn{position:absolute !important;inset:0 !important;display:flex !important;flex-direction:column !important;align-items:center !important;justify-content:center !important;text-align:center !important;background:rgba(255,255,255,.68) !important;z-index:5 !important;pointer-events:none !important;padding:2px !important;box-sizing:border-box !important;}',
+      '.rcz-nophoto-warn__hd{font-family:Roboto,Arial,sans-serif !important;font-weight:800 !important;color:#e5231b !important;font-size:16cqw !important;line-height:1 !important;letter-spacing:.01em !important;}',
+      '.rcz-nophoto-warn__sub{font-family:Roboto,Arial,sans-serif !important;font-weight:800 !important;color:#e5231b !important;font-size:18cqw !important;line-height:1 !important;letter-spacing:-.01em !important;margin-top:6px !important;}'
+    );
     if (CFG.TAG_SEARCH_TYPES) rules.push(
       // MEMBERSHIP (purple) vs TICKETS (blue) badge on each booking-search row. Distinct from the green VALID pill.
       '.rcz-searchtype{margin-left:6px !important;font-size:11px !important;font-weight:700 !important;letter-spacing:.02em !important;padding:2px 8px !important;border-radius:999px !important;line-height:1.5 !important;color:#fff !important;white-space:nowrap !important;}',
@@ -2398,6 +2411,18 @@
         if (wrap.style.display !== 'none') wrap.style.display = 'none';
       }
     }
+  }
+  // Overlay a "PHOTO REQUIRED" warning on the grey no-photo placeholder in ROLLER's Redeem-membership dialog,
+  // so staff attaching a member to a booking are warned that member has no photo on file. ROLLER renders the
+  // placeholder only for photo-less members (a member WITH a photo gets an <img>), so this shows exactly then.
+  function labelRedeemNoPhoto() {
+    if (!CFG.LABEL_REDEEM_NOPHOTO) return;
+    document.querySelectorAll('app-dialog-redeem-membership .membership-card__image-placeholder').forEach(function (ph) {
+      if (ph.querySelector('.rcz-nophoto-warn')) return;
+      var o = document.createElement('div'); o.className = 'rcz-nophoto-warn';
+      o.innerHTML = '<div class="rcz-nophoto-warn__hd">' + esc(CFG.REDEEM_NOPHOTO_HD) + '</div><div class="rcz-nophoto-warn__sub">' + esc(CFG.REDEEM_NOPHOTO_SUB) + '</div>';
+      ph.appendChild(o);
+    });
   }
 
   // ---- Photo-from-file: an alternative to ROLLER's camera capture ----------------------------------------
