@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Venue — ROLLER Check-in Cards + Member Photos
 // @namespace    venue.roller.checkin-cards
-// @version      5.148
+// @version      5.149
 // @description  Reformats the ROLLER POS booking check-in list into full-frame photo cards, surfaces member photos on load (no Verify click), alerts when a member has no photo, handles family memberships (best-effort photos + add-name prompt) and close/similar name matches.
 // @match        https://pos.roller.app/*
 // @match        https://*.roller.app/*
@@ -46,6 +46,7 @@
     LABEL_REDEEM_NOPHOTO: true,        // overlay a "no photo on file" warning on the grey placeholder in ROLLER's Redeem-membership panel
     REDEEM_NOPHOTO_HD:  'WARNING:',    // first line of that warning
     REDEEM_NOPHOTO_SUB: 'PHOTO REQUIRED',  // second line (wraps to fill the small grey square)
+    DASHBOARD_GUESTS_MINUS_MEMBERSHIPS: true,  // on manage.roller.app dashboard, display "Guests booked" NET of "New memberships" (guests - new memberships)
     DONE_STEP_BACK:   true,   // after "Done" on a child member page, step back past the parent page it pushes
     FLAG_MISASSIGNED: false,  // OFF: a discount mis-assignment where the real member IS on the booking shows nothing (normal member). Set true to restore the "MEMBERSHIP DISCOUNT MIS-ASSIGNED" reassurance note.
     WARN_HEADING:     'WARNING: MISSING DATA',                   // ACTION REQUIRED banner big heading (missing-data / ADD PHOTO box only)
@@ -1663,6 +1664,7 @@
       injectGlobalStyle();
       hideRedeemButtons();
       labelRedeemNoPhoto();    // "PHOTO REQUIRED" warning on the grey no-photo tile in the Redeem-membership dialog (any route)
+      adjustGuestsBooked();    // manage.roller.app dashboard: show Guests booked net of New memberships
       ensureFileUploadBtn();   // "Choose a photo file" beside ROLLER's camera capture (runs on the member/item detail pages too, so it's before the activeRoute gate)
       tagSearchRows();         // badge search-result rows MEMBERSHIP vs TICKETS (search list isn't the activeRoute, so before the gate)
       // On a membership PROFILE detail (member profile via search, or a membership item detail) tag <body> so
@@ -2424,6 +2426,43 @@
       ph.appendChild(o);
     });
   }
+  // manage.roller.app dashboard: ROLLER's "Guests booked" figure counts new membership sign-ups too. Show it net
+  // of them (Guests booked − New memberships). Both numbers are Angular ng-bindings that only rewrite the DOM when
+  // their value actually changes, so our net value persists between changes; we recompute whenever either moves.
+  // The dashboard renders inside a same-origin iframe, so we operate on this frame's document AND any same-origin
+  // child iframe (covers running whether the script is injected into the iframe or the top frame). Idempotent via
+  // data-rcz-orig/adj markers so a re-run never double-subtracts.
+  function adjustGuestsBooked() {
+    if (!CFG.DASHBOARD_GUESTS_MINUS_MEMBERSHIPS) return;
+    var docs = [document];
+    try { document.querySelectorAll('iframe').forEach(function (f) { try { if (f.contentDocument) docs.push(f.contentDocument); } catch (e) {} }); } catch (e) {}
+    for (var i = 0; i < docs.length; i++) { try { adjustGuestsBookedIn(docs[i]); } catch (e) {} }
+  }
+  function adjustGuestsBookedIn(doc) {
+    var lbl = doc.querySelector('h3[qa-id="dashboard-info-Guests booked"]'); if (!lbl) return;
+    var tile = lbl.parentElement, countP = tile && tile.querySelector('p.dashboard-info__count'); if (!countP) return;
+    var tn = countP.firstChild; if (!tn || tn.nodeType !== 3) return;   // the number is the first (text) child node
+    // "New memberships" value = the <p> immediately after the "New memberships" label <p>
+    var nm = null, ps = doc.querySelectorAll('p');
+    for (var i = 0; i < ps.length; i++) {
+      if (/^\s*New memberships\s*$/i.test(ps[i].textContent || '')) {
+        var v = ps[i].nextElementSibling;
+        if (v) { var x = parseInt(String(v.textContent || '').replace(/[^0-9-]/g, ''), 10); if (!isNaN(x)) nm = x; }
+        break;
+      }
+    }
+    if (nm == null) return;   // couldn't read memberships -> leave the number untouched rather than show a wrong net
+    var cur = String(tn.nodeValue || '').trim(), curNum = parseInt(cur.replace(/[^0-9-]/g, ''), 10); if (isNaN(curNum)) return;
+    var adjPrev = countP.getAttribute('data-rcz-adj');
+    // if the text is still the value WE wrote, the true original is the one we stored; otherwise Angular has just
+    // written a fresh real number, so take it as the new original.
+    var orig = (adjPrev !== null && cur === adjPrev) ? parseInt(countP.getAttribute('data-rcz-orig') || '', 10) : curNum;
+    if (isNaN(orig)) orig = curNum;
+    var adj = String(orig - nm);
+    if (cur !== adj) tn.nodeValue = adj;
+    countP.setAttribute('data-rcz-orig', String(orig));
+    countP.setAttribute('data-rcz-adj', adj);
+  }
 
   // ---- Photo-from-file: an alternative to ROLLER's camera capture ----------------------------------------
   // ROLLER's capture reads the frame from the camera TRACK (not the <video> element), so swapping the video's
@@ -2672,6 +2711,9 @@
       window.__rczT = setTimeout(render, 60);
     });
     obs.observe(document.documentElement, { childList: true, subtree: true });
+    // manage.roller.app dashboard refreshes its figures on its own timer inside a same-origin iframe; a periodic
+    // re-apply guarantees the "Guests booked" net stays correct even if a mutation isn't observed in this frame.
+    if (CFG.DASHBOARD_GUESTS_MINUS_MEMBERSHIPS && location.hostname === 'manage.roller.app') setInterval(adjustGuestsBooked, 1500);
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
   else boot();
