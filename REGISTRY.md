@@ -80,8 +80,8 @@ Every customisation the userscript (`venue-roller-checkin.user.js`) makes to ROL
 
 | # | Tweak | Why | Flag | Watchdog |
 |---|---|---|---|---|
-| E1 | Show **"Guests booked" net of "New memberships"** (guests − new memberships) | ⚠️ *confirm* — ROLLER's "Guests booked" counts new membership sign-ups; you wanted the figure to reflect actual guests booked | `DASHBOARD_GUESTS_MINUS_MEMBERSHIPS` | `dash-guests`, `dash-newmemberships` |
-| E2 | Remove the **"Funds received"** and **"Revenue"** summary tiles, and the **"Funds received ($)"** product-sales column | ⚠️ *confirm reason* — presumably floor staff shouldn't see venue financials on the shared dashboard | `DASHBOARD_HIDE_FINANCIALS` | `dash-guests`, `dash-product-grid` |
+| E1 | Show **"Guests booked" net of "New memberships"** (guests − new memberships) | The headline "Guests booked" should reflect **actual guests coming in**, excluding people who only bought/renewed a membership that day (ROLLER's raw figure counts those sign-ups) | `DASHBOARD_GUESTS_MINUS_MEMBERSHIPS` | `dash-guests`, `dash-newmemberships` |
+| E2 | Remove the **"Funds received"** and **"Revenue"** summary tiles, and the **"Funds received ($)"** product-sales column | Keep venue **financial figures off the shared dashboard** that floor staff see | `DASHBOARD_HIDE_FINANCIALS` | `dash-guests`, `dash-product-grid` |
 
 ## F. Infrastructure
 
@@ -95,13 +95,12 @@ Every customisation the userscript (`venue-roller-checkin.user.js`) makes to ROL
 
 ---
 
-## ⚠️ Reasons to confirm
+## Reasons confirmed by Tom (2026-08-05)
 
-Please confirm (or correct) the "why" for these — I've inferred them:
-
-1. **E1 — Guests booked net of memberships:** my understanding is you want the headline "Guests booked" to mean *actual guests coming in*, excluding people who merely bought/renewed a membership that day. Correct?
-2. **E2 — remove Funds received / Revenue / Funds-received column:** I assumed it's to keep venue **financial figures off the shared dashboard** that floor staff see. Is that the reason (privacy/relevance), or something else (e.g. the numbers are misleading/wrong for your setup)?
-3. **A15/A16 — missing-photo warns but doesn't block:** confirming this is still what you want (warn loudly, never hard-stop a check-in).
+All previously-inferred reasons confirmed correct:
+- **E1** — "Guests booked" net of memberships: yes, headline should reflect actual guests coming in, excluding membership-only purchases.
+- **E2** — remove Funds received / Revenue / Funds-received column: yes, keep venue financial figures off the shared dashboard floor staff see.
+- **A15/A16** — missing-photo warns but never blocks: yes, keep as-is (warn loudly, never hard-stop a check-in).
 
 ## Parked / off by default (kept in code, not active)
 - `FLAG_MISASSIGNED` (off) — reassurance note for a discount mis-assignment where the real member is on the booking.
