@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Venue — ROLLER Check-in Cards + Member Photos
 // @namespace    venue.roller.checkin-cards
-// @version      5.150
+// @version      5.151
 // @description  Reformats the ROLLER POS booking check-in list into full-frame photo cards, surfaces member photos on load (no Verify click), alerts when a member has no photo, handles family memberships (best-effort photos + add-name prompt) and close/similar name matches.
 // @match        https://pos.roller.app/*
 // @match        https://*.roller.app/*
@@ -48,6 +48,12 @@
     REDEEM_NOPHOTO_SUB: 'PHOTO REQUIRED',  // second line (wraps to fill the small grey square)
     DASHBOARD_GUESTS_MINUS_MEMBERSHIPS: true,  // on manage.roller.app dashboard, display "Guests booked" NET of "New memberships" (guests - new memberships)
     DASHBOARD_HIDE_FINANCIALS: true,           // on manage.roller.app dashboard, remove the "Funds received" + "Revenue" summary tiles and the "Funds received ($)" product-sales column
+    // ---- WATCHDOG: silent health telemetry across all deployments ----
+    WATCHDOG: true,             // run the health checks in the background and report breakage
+    WATCHDOG_URL: 'https://script.google.com/macros/s/AKfycbyxAzme9u1v0Q8nx585z4fbvhkyRYFoUfOyZNHRNtTFwreJ5ZWZDMtzDVo_kUvO6eSl/exec',   // your Google Apps Script webhook (emails you). '' = detect + log locally only, SEND NOTHING
+    WATCHDOG_EVERY_MS: 60000,   // how often to run the checks (1 min)
+    WATCHDOG_STREAK: 3,         // must be broken this many consecutive runs before reporting (rides out page-load transients)
+    WATCHDOG_MIN_HOURS: 24,     // per machine, report each check+version at most once in this many hours (anti-spam)
     DONE_STEP_BACK:   true,   // after "Done" on a child member page, step back past the parent page it pushes
     FLAG_MISASSIGNED: false,  // OFF: a discount mis-assignment where the real member IS on the booking shows nothing (normal member). Set true to restore the "MEMBERSHIP DISCOUNT MIS-ASSIGNED" reassurance note.
     WARN_HEADING:     'WARNING: MISSING DATA',                   // ACTION REQUIRED banner big heading (missing-data / ADD PHOTO box only)
@@ -2718,6 +2724,83 @@
     }
   }
 
+  /* ======================================================================
+     WATCHDOG — silent health telemetry across all deployments
+     Runs the checks below in the background. When a structural anchor a tweak
+     depends on is MISSING on a page where it should exist (i.e. ROLLER changed
+     something), it reports once-per-issue-per-day-per-machine to CFG.WATCHDOG_URL
+     (a webhook you own that emails you). No guest data leaves — only: check id,
+     the recorded reason, script version, a random machine id, a digit-stripped
+     path, and the date. Console tools: rczDiag() shows all checks for the CURRENT
+     page now; rczHealth() prints this machine's local log.
+     ====================================================================== */
+  function rczMachineId() {
+    try { var k = 'rcz-machine-id', v = localStorage.getItem(k); if (!v) { v = Date.now().toString(36) + Math.random().toString(36).slice(2, 8); localStorage.setItem(k, v); } return v; } catch (e) { return 'unknown'; }
+  }
+  function rczDocs() { var ds = [document]; try { document.querySelectorAll('iframe').forEach(function (f) { try { if (f.contentDocument) ds.push(f.contentDocument); } catch (e) {} }); } catch (e) {} return ds; }
+  function rczAny(sel) { var ds = rczDocs(); for (var i = 0; i < ds.length; i++) { try { if (ds[i].querySelector(sel)) return true; } catch (e) {} } return false; }
+  function rczAnyText(sel, re) { var ds = rczDocs(); for (var i = 0; i < ds.length; i++) { try { var e = ds[i].querySelectorAll(sel); for (var j = 0; j < e.length; j++) { if (re.test(e[j].textContent || '')) return true; } } catch (x) {} } return false; }
+  function rczDashGridOk() { var ds = rczDocs(); for (var i = 0; i < ds.length; i++) { try { var gs = ds[i].querySelectorAll('.dx-datagrid'); for (var j = 0; j < gs.length; j++) { var hr = gs[j].querySelector('.dx-header-row'); if (hr && /funds received/i.test(hr.textContent || '')) return true; } } catch (e) {} } return false; }
+  // "Are we on the manage dashboard?" — keyed off the URL, INDEPENDENT of the qa-id/class anchors the checks
+  // verify, so that a rename of those anchors surfaces as BROKEN rather than silently going n/a.
+  function rczOnDashboard() { return location.hostname === 'manage.roller.app' && /(^|\/)dashboard(\/|$)/.test(location.pathname); }
+  // Each check: applies() = are we on a page where this SHOULD be verifiable? ok() = is the anchor present?
+  var WD_CHECKS = [
+    { id: 'pos-tiles',           why: 'Full-frame photo tiles hook <app-bip-summary>; renamed = no tiles render.',                     applies: function () { return activeRoute(); },                                                ok: function () { return !!document.querySelector('app-bip-summary'); } },
+    { id: 'pos-checkin-btn',     why: 'Shield styling, tick-hiding and the Undo flow target button[id^="check-in-button"].',           applies: function () { return activeRoute() && !!document.querySelector('app-bip-summary'); },        ok: function () { return !!document.querySelector('button[id^="check-in-button"]'); } },
+    { id: 'pos-details-btn',     why: 'Photo / age / casual overlays target button[id^="booking-details-button-"].',                  applies: function () { return activeRoute() && !!document.querySelector('app-bip-summary'); },        ok: function () { return !!document.querySelector('button[id^="booking-details-button-"]'); } },
+    { id: 'pos-section-pills',   why: 'Section relabels + enlargement target span.ui-pill__text.',                                     applies: function () { return activeRoute(); },                                                ok: function () { return !!document.querySelector('span.ui-pill__text'); } },
+    { id: 'search-rows',         why: 'Search MEMBERSHIP/TICKETS/OTHER badges read the receipt from a[id^="booking-search-result-"].', applies: function () { return !!document.querySelector('app-booking-search-result'); },                ok: function () { return !!document.querySelector('a[id^="booking-search-result-"]'); } },
+    { id: 'redeem-photo-card',   why: 'The "PHOTO REQUIRED" warning targets .membership-card in app-dialog-redeem-membership.',       applies: function () { return !!document.querySelector('app-dialog-redeem-membership'); },             ok: function () { return !!document.querySelector('app-dialog-redeem-membership app-membership-card, app-dialog-redeem-membership .membership-card__image-placeholder'); } },
+    { id: 'dash-guests',         why: 'Guests-booked net + Funds/Revenue tile removal rely on h3[qa-id="dashboard-info-*"] + p.dashboard-info__count.', applies: rczOnDashboard, ok: function () { return rczAny('h3[qa-id="dashboard-info-Guests booked"]') && rczAny('p.dashboard-info__count'); } },
+    { id: 'dash-newmemberships', why: 'The Guests-booked net subtracts the "New memberships" value found by that label.',              applies: rczOnDashboard, ok: function () { return rczAnyText('p', /^\s*New memberships\s*$/i); } },
+    { id: 'dash-product-grid',   why: 'Funds-received column removal targets the .dx-datagrid header row containing "Funds received".', applies: rczOnDashboard, ok: function () { return rczDashGridOk(); } }
+  ];
+  function rczRunChecks() {
+    var res = [];
+    for (var i = 0; i < WD_CHECKS.length; i++) {
+      var c = WD_CHECKS[i], applies = false, ok = false;
+      try { applies = !!c.applies(); } catch (e) {}
+      if (applies) { try { ok = !!c.ok(); } catch (e) { ok = false; } }
+      res.push({ id: c.id, status: !applies ? 'n/a' : (ok ? 'ok' : 'BROKEN'), why: c.why });
+    }
+    return res;
+  }
+  function rczLogHealth(entry) {
+    try { var k = 'rcz-health-log', log = JSON.parse(localStorage.getItem(k) || '[]'); log.unshift(entry); if (log.length > 50) log = log.slice(0, 50); localStorage.setItem(k, JSON.stringify(log)); } catch (e) {}
+  }
+  function rczReport(check) {
+    var key = 'rcz-wd:' + check.id + ':' + SCRIPT_VERSION, last = 0;   // dedup key includes version, so a new deploy re-alerts if still broken
+    try { last = parseInt(localStorage.getItem(key) || '0', 10) || 0; } catch (e) {}
+    if (Date.now() - last < CFG.WATCHDOG_MIN_HOURS * 3600000) return;
+    var payload = { check: check.id, why: check.why, version: SCRIPT_VERSION, machine: rczMachineId(), path: String(location.pathname || '').replace(/\d+/g, '#'), date: new Date().toISOString() };
+    rczLogHealth(payload);
+    if (CFG.WATCHDOG_URL) {
+      var body = JSON.stringify(payload), sent = false;
+      try { sent = navigator.sendBeacon(CFG.WATCHDOG_URL, body); } catch (e) {}
+      if (!sent) { try { fetch(CFG.WATCHDOG_URL, { method: 'POST', mode: 'no-cors', keepalive: true, body: body }); } catch (e) {} }
+    }
+    try { localStorage.setItem(key, String(Date.now())); } catch (e) {}
+  }
+  var rczStreak = {};
+  function runWatchdog() {
+    if (!CFG.WATCHDOG) return;
+    try {
+      for (var i = 0; i < WD_CHECKS.length; i++) {
+        var c = WD_CHECKS[i], applies = false;
+        try { applies = !!c.applies(); } catch (e) {}
+        if (!applies) { rczStreak[c.id] = 0; continue; }
+        var ok = false; try { ok = !!c.ok(); } catch (e) { ok = false; }
+        if (ok) rczStreak[c.id] = 0;
+        else { rczStreak[c.id] = (rczStreak[c.id] || 0) + 1; if (rczStreak[c.id] >= CFG.WATCHDOG_STREAK) rczReport(c); }  // only report persistent breakage, not a load transient
+      }
+    } catch (e) {}
+  }
+  try {
+    window.rczDiag = function () { var r = rczRunChecks(); try { console.table(r); } catch (e) { console.log(JSON.stringify(r, null, 1)); } return r; };
+    window.rczHealth = function () { var log = []; try { log = JSON.parse(localStorage.getItem('rcz-health-log') || '[]'); } catch (e) {} console.log('[rcz] health log — ' + log.length + ' entr' + (log.length === 1 ? 'y' : 'ies') + ' (machine ' + rczMachineId() + '):'); log.forEach(function (e) { console.log(e.date + '  ' + e.check + '  v' + e.version + '  ' + e.path); }); return log; };
+  } catch (e) {}
+
   function boot() {
     injectGlobalStyle();
     injectStyle();
@@ -2737,6 +2820,8 @@
     // manage.roller.app dashboard refreshes its figures on its own timer inside a same-origin iframe; a periodic
     // re-apply guarantees the "Guests booked" net stays correct even if a mutation isn't observed in this frame.
     if ((CFG.DASHBOARD_GUESTS_MINUS_MEMBERSHIPS || CFG.DASHBOARD_HIDE_FINANCIALS) && location.hostname === 'manage.roller.app') setInterval(adjustGuestsBooked, 1500);
+    // Watchdog: run the health checks on a timer (first run delayed so page-load transients settle).
+    if (CFG.WATCHDOG) setInterval(runWatchdog, CFG.WATCHDOG_EVERY_MS);
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
   else boot();
