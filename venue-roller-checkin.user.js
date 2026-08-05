@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Venue — ROLLER Check-in Cards + Member Photos
 // @namespace    venue.roller.checkin-cards
-// @version      5.155
+// @version      5.156
 // @description  Reformats the ROLLER POS booking check-in list into full-frame photo cards, surfaces member photos on load (no Verify click), alerts when a member has no photo, handles family memberships (best-effort photos + add-name prompt) and close/similar name matches.
 // @match        https://pos.roller.app/*
 // @match        https://*.roller.app/*
@@ -2775,7 +2775,9 @@
     { id: 'pos-checkin-btn',     why: 'Shield styling, tick-hiding and the Undo flow target button[id^="check-in-button"].',           applies: function () { return activeRoute() && !!document.querySelector('app-bip-summary'); },        ok: function () { return !!document.querySelector('button[id^="check-in-button"]'); } },
     { id: 'pos-details-btn',     why: 'Photo / age / casual overlays target button[id^="booking-details-button-"].',                  applies: function () { return activeRoute() && !!document.querySelector('app-bip-summary'); },        ok: function () { return !!document.querySelector('button[id^="booking-details-button-"]'); } },
     { id: 'pos-section-pills',   why: 'Section relabels + enlargement target span.ui-pill__text.',                                     applies: function () { return activeRoute(); },                                                ok: function () { return !!document.querySelector('span.ui-pill__text'); } },
-    { id: 'search-rows',         why: 'Search MEMBERSHIP/TICKETS/OTHER badges read the receipt from a[id^="booking-search-result-"].', applies: function () { return !!document.querySelector('app-booking-search-result'); },                ok: function () { return !!document.querySelector('a[id^="booking-search-result-"]'); } },
+    // NB: on a booking/membership DETAIL page the current booking renders as an <app-booking-search-result> HEADER
+    // with NO clickable anchor — that's not a results list to badge, so skip detail routes (else it false-fires).
+    { id: 'search-rows',         why: 'Search MEMBERSHIP/TICKETS/OTHER badges read the receipt from a[id^="booking-search-result-"].', applies: function () { return !/^\/search\/(bookings\/\d+|memberships\/\d+\/\d+)/.test(location.pathname) && !!document.querySelector('app-booking-search-result'); }, ok: function () { return !!document.querySelector('a[id^="booking-search-result-"]'); } },
     { id: 'redeem-photo-card',   why: 'The "PHOTO REQUIRED" warning targets .membership-card in app-dialog-redeem-membership.',       applies: function () { return !!document.querySelector('app-dialog-redeem-membership'); },             ok: function () { return !!document.querySelector('app-dialog-redeem-membership app-membership-card, app-dialog-redeem-membership .membership-card__image-placeholder'); } },
     { id: 'dash-guests',         why: 'Guests-booked net + Funds/Revenue tile removal rely on h3[qa-id="dashboard-info-*"] + p.dashboard-info__count.', applies: rczDashCheckable, ok: function () { return rczAny('h3[qa-id="dashboard-info-Guests booked"]') && rczAny('p.dashboard-info__count'); } },
     { id: 'dash-newmemberships', why: 'The Guests-booked net subtracts the "New memberships" value found by that label.',              applies: rczDashCheckable, ok: function () { return rczAnyText('p', /^\s*New memberships\s*$/i); } },
