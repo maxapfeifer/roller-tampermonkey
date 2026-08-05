@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Venue — ROLLER Check-in Cards + Member Photos
 // @namespace    venue.roller.checkin-cards
-// @version      5.151
+// @version      5.152
 // @description  Reformats the ROLLER POS booking check-in list into full-frame photo cards, surfaces member photos on load (no Verify click), alerts when a member has no photo, handles family memberships (best-effort photos + add-name prompt) and close/similar name matches.
 // @match        https://pos.roller.app/*
 // @match        https://*.roller.app/*
@@ -2754,7 +2754,11 @@
     { id: 'redeem-photo-card',   why: 'The "PHOTO REQUIRED" warning targets .membership-card in app-dialog-redeem-membership.',       applies: function () { return !!document.querySelector('app-dialog-redeem-membership'); },             ok: function () { return !!document.querySelector('app-dialog-redeem-membership app-membership-card, app-dialog-redeem-membership .membership-card__image-placeholder'); } },
     { id: 'dash-guests',         why: 'Guests-booked net + Funds/Revenue tile removal rely on h3[qa-id="dashboard-info-*"] + p.dashboard-info__count.', applies: rczOnDashboard, ok: function () { return rczAny('h3[qa-id="dashboard-info-Guests booked"]') && rczAny('p.dashboard-info__count'); } },
     { id: 'dash-newmemberships', why: 'The Guests-booked net subtracts the "New memberships" value found by that label.',              applies: rczOnDashboard, ok: function () { return rczAnyText('p', /^\s*New memberships\s*$/i); } },
-    { id: 'dash-product-grid',   why: 'Funds-received column removal targets the .dx-datagrid header row containing "Funds received".', applies: rczOnDashboard, ok: function () { return rczDashGridOk(); } }
+    { id: 'dash-product-grid',   why: 'Funds-received column removal targets the .dx-datagrid header row containing "Funds received".', applies: rczOnDashboard, ok: function () { return rczDashGridOk(); } },
+    // CANARY: a deliberate always-broken check that only "applies" when you set localStorage rcz-selftest=1.
+    // With it set, the normal watchdog timer detects it broken and emails you within ~3 min (streak) — a genuine
+    // end-to-end test of the auto-detect -> email chain. Remove the key to stop.
+    { id: 'self-test',           why: 'Watchdog SELF-TEST (localStorage rcz-selftest=1) — deliberate, not a real problem. Remove the key to stop.', applies: function () { try { return localStorage.getItem('rcz-selftest') === '1'; } catch (e) { return false; } }, ok: function () { return false; } }
   ];
   function rczRunChecks() {
     var res = [];
@@ -2797,8 +2801,16 @@
     } catch (e) {}
   }
   try {
+    window.rczVersion = SCRIPT_VERSION;
     window.rczDiag = function () { var r = rczRunChecks(); try { console.table(r); } catch (e) { console.log(JSON.stringify(r, null, 1)); } return r; };
     window.rczHealth = function () { var log = []; try { log = JSON.parse(localStorage.getItem('rcz-health-log') || '[]'); } catch (e) {} console.log('[rcz] health log — ' + log.length + ' entr' + (log.length === 1 ? 'y' : 'ies') + ' (machine ' + rczMachineId() + '):'); log.forEach(function (e) { console.log(e.date + '  ' + e.check + '  v' + e.version + '  ' + e.path); }); return log; };
+    // Fire a REAL alert now, through the exact report path a genuine bug uses (dedup cleared so it's repeatable).
+    window.rczTestAlert = function () {
+      try { localStorage.removeItem('rcz-wd:self-test:' + SCRIPT_VERSION); } catch (e) {}
+      rczReport({ id: 'self-test', why: 'Manual watchdog self-test — confirms detection→email works. Not a real problem.' });
+      console.log('[rcz] test alert fired' + (CFG.WATCHDOG_URL ? ' to the watchdog endpoint — check the admin inbox shortly.' : ' (no WATCHDOG_URL set — logged locally only; see rczHealth()).'));
+      return true;
+    };
   } catch (e) {}
 
   function boot() {
