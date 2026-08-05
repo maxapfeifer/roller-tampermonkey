@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Venue — ROLLER Check-in Cards + Member Photos
 // @namespace    venue.roller.checkin-cards
-// @version      5.153
+// @version      5.154
 // @description  Reformats the ROLLER POS booking check-in list into full-frame photo cards, surfaces member photos on load (no Verify click), alerts when a member has no photo, handles family memberships (best-effort photos + add-name prompt) and close/similar name matches.
 // @match        https://pos.roller.app/*
 // @match        https://*.roller.app/*
@@ -880,6 +880,8 @@
       'app-bip-summary:not(.rcz-skip) .summary-detail p.summary-detail__item:not(.summary-detail__item--emphasis){display:none !important;}',
       /* category ("Adult"/"Child"/"Infant") smaller; name ("Erin") larger, bold. Type text is BLACK. */
       'app-bip-summary:not(.rcz-skip) .summary-detail .summary-detail__item--emphasis{font-size:18px !important;font-weight:600 !important;color:#111827 !important;margin:0 !important;line-height:1.32 !important;}',
+      // On party-guest tiles, drop ROLLER's product line ("Number of Children") — the tile already reads "Party Guest".
+      'app-bip-summary.rcz-partyguest .summary-detail__item--emphasis{display:none !important;}',
       'app-bip-summary:not(.rcz-skip) .summary-detail .summary-detail__item-holder-wrapper{display:block !important;font-size:18px !important;font-weight:800 !important;color:#1f2933 !important;margin-top:0 !important;line-height:1.32 !important;}',
       /* kill the empty modifiers row\'s 4px margin so the type + name lines sit flush (align with the tier) */
       'app-bip-summary:not(.rcz-skip) .summary-detail .summary-detail__modifiers{margin:0 !important;}',
@@ -1134,9 +1136,12 @@
     // Party booking -> admission tiles read "Party Guest" (flag the whole party). Otherwise: admission -> the age
     // word (Infant/Child/Adult); non-admission (gift card, retail, package) -> its real product type, never a
     // bogus "Adult". Non-admission items on a party (food/add-ons) keep their real type — only age tiles flip.
-    var ty = (CFG.FLAG_PARTY_GUESTS && state.isParty && at) ? CFG.PARTY_GUEST_LABEL
+    var party = CFG.FLAG_PARTY_GUESTS && state.isParty && !!at;
+    var ty = party ? CFG.PARTY_GUEST_LABEL
            : at ? (at.charAt(0).toUpperCase() + at.slice(1))
            : typeLabel(typeRaw);
+    // Mark party-guest tiles so the CSS can hide ROLLER's product line ("Number of Children") on them.
+    var _ph = btn.closest && btn.closest('app-bip-summary'); if (_ph) _ph.classList.toggle('rcz-partyguest', party);
     var nm = proper(firstName(name || ''));
     var oi = btn.querySelector('img.rcz-ageicon'); if (oi) oi.remove();   // drop any prior silhouette
     var mi = btn.querySelector('mat-icon'); if (mi) mi.style.display = 'none';
@@ -1146,7 +1151,7 @@
                (nm ? '<div class="rcz-agetext__nm">' + esc(nm) + '</div>' : '');
     if (el.getAttribute('data-h') !== html) { el.innerHTML = html; el.setAttribute('data-h', html); }
   }
-  function clrAgeText(btn) { if (!btn) return; var el = btn.querySelector('.rcz-agetext'); if (el) el.remove(); var im = btn.querySelector('img.rcz-ageicon'); if (im) im.remove(); }
+  function clrAgeText(btn) { if (!btn) return; var el = btn.querySelector('.rcz-agetext'); if (el) el.remove(); var im = btn.querySelector('img.rcz-ageicon'); if (im) im.remove(); var h = btn.closest && btn.closest('app-bip-summary'); if (h) h.classList.remove('rcz-partyguest'); }
   function addMismatch(w, noteHtml, onPhoto) {
     w.classList.add('rcz-mismatch-on');
     var m = w.querySelector('.rcz-mismatch');
@@ -1827,7 +1832,7 @@
           } else if (img) { img.remove(); }
           var cnm = holderNameFor(w, cardId);
           var ccat = ((w.querySelector('.summary-detail__item--emphasis') || {}).textContent || '').trim();
-          addCasual(w, cnm, ccat, info.fosterCare ? CFG.FOSTER_LABEL : null); clrAlert(w); clrMismatch(w); clrVisiting(w); clrNote(w); clrBadge(w); clrActionReq(w);
+          addCasual(w, cnm, ccat, info.fosterCare ? CFG.FOSTER_LABEL : ((CFG.FLAG_PARTY_GUESTS && state.isParty) ? CFG.PARTY_GUEST_LABEL : null)); clrAlert(w); clrMismatch(w); clrVisiting(w); clrNote(w); clrBadge(w); clrActionReq(w);
         } else {
           // still loading / unknown -> plain placeholder, no overlay
           if (img) img.remove();
