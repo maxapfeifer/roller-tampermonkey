@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Venue — ROLLER Check-in Cards + Member Photos
 // @namespace    venue.roller.checkin-cards
-// @version      5.154
+// @version      5.155
 // @description  Reformats the ROLLER POS booking check-in list into full-frame photo cards, surfaces member photos on load (no Verify click), alerts when a member has no photo, handles family memberships (best-effort photos + add-name prompt) and close/similar name matches.
 // @match        https://pos.roller.app/*
 // @match        https://*.roller.app/*
@@ -2763,6 +2763,12 @@
   // "Are we on the manage dashboard?" — keyed off the URL, INDEPENDENT of the qa-id/class anchors the checks
   // verify, so that a rename of those anchors surfaces as BROKEN rather than silently going n/a.
   function rczOnDashboard() { return location.hostname === 'manage.roller.app' && /(^|\/)dashboard(\/|$)/.test(location.pathname); }
+  // Is the dashboard actually LOADED (vs a till left overnight whose session expired / iframe blank / logged out)?
+  // Gate the dashboard checks on this so a not-loaded dashboard reports n/a, not BROKEN. Uses the broad
+  // dashboard-info qa-id family as the "is the summary rendered" signal — a targeted rename of ONE tile still
+  // trips its check (the others keep this true); only a full dashboard redesign makes it go quiet (accepted).
+  function rczDashLoaded() { return rczAny('[qa-id^="dashboard-info-"]'); }
+  function rczDashCheckable() { return rczOnDashboard() && rczDashLoaded(); }
   // Each check: applies() = are we on a page where this SHOULD be verifiable? ok() = is the anchor present?
   var WD_CHECKS = [
     { id: 'pos-tiles',           why: 'Full-frame photo tiles hook <app-bip-summary>; renamed = no tiles render.',                     applies: function () { return activeRoute(); },                                                ok: function () { return !!document.querySelector('app-bip-summary'); } },
@@ -2771,9 +2777,9 @@
     { id: 'pos-section-pills',   why: 'Section relabels + enlargement target span.ui-pill__text.',                                     applies: function () { return activeRoute(); },                                                ok: function () { return !!document.querySelector('span.ui-pill__text'); } },
     { id: 'search-rows',         why: 'Search MEMBERSHIP/TICKETS/OTHER badges read the receipt from a[id^="booking-search-result-"].', applies: function () { return !!document.querySelector('app-booking-search-result'); },                ok: function () { return !!document.querySelector('a[id^="booking-search-result-"]'); } },
     { id: 'redeem-photo-card',   why: 'The "PHOTO REQUIRED" warning targets .membership-card in app-dialog-redeem-membership.',       applies: function () { return !!document.querySelector('app-dialog-redeem-membership'); },             ok: function () { return !!document.querySelector('app-dialog-redeem-membership app-membership-card, app-dialog-redeem-membership .membership-card__image-placeholder'); } },
-    { id: 'dash-guests',         why: 'Guests-booked net + Funds/Revenue tile removal rely on h3[qa-id="dashboard-info-*"] + p.dashboard-info__count.', applies: rczOnDashboard, ok: function () { return rczAny('h3[qa-id="dashboard-info-Guests booked"]') && rczAny('p.dashboard-info__count'); } },
-    { id: 'dash-newmemberships', why: 'The Guests-booked net subtracts the "New memberships" value found by that label.',              applies: rczOnDashboard, ok: function () { return rczAnyText('p', /^\s*New memberships\s*$/i); } },
-    { id: 'dash-product-grid',   why: 'Funds-received column removal targets the .dx-datagrid header row containing "Funds received".', applies: rczOnDashboard, ok: function () { return rczDashGridOk(); } },
+    { id: 'dash-guests',         why: 'Guests-booked net + Funds/Revenue tile removal rely on h3[qa-id="dashboard-info-*"] + p.dashboard-info__count.', applies: rczDashCheckable, ok: function () { return rczAny('h3[qa-id="dashboard-info-Guests booked"]') && rczAny('p.dashboard-info__count'); } },
+    { id: 'dash-newmemberships', why: 'The Guests-booked net subtracts the "New memberships" value found by that label.',              applies: rczDashCheckable, ok: function () { return rczAnyText('p', /^\s*New memberships\s*$/i); } },
+    { id: 'dash-product-grid',   why: 'Funds-received column removal targets the .dx-datagrid header row containing "Funds received".', applies: rczDashCheckable, ok: function () { return rczDashGridOk(); } },
     // CANARY: a deliberate always-broken check that only "applies" when you set localStorage rcz-selftest=1.
     // With it set, the normal watchdog timer detects it broken and emails you within ~3 min (streak) — a genuine
     // end-to-end test of the auto-detect -> email chain. Remove the key to stop.
