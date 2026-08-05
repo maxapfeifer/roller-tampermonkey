@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Venue — ROLLER Check-in Cards + Member Photos
 // @namespace    venue.roller.checkin-cards
-// @version      5.152
+// @version      5.153
 // @description  Reformats the ROLLER POS booking check-in list into full-frame photo cards, surfaces member photos on load (no Verify click), alerts when a member has no photo, handles family memberships (best-effort photos + add-name prompt) and close/similar name matches.
 // @match        https://pos.roller.app/*
 // @match        https://*.roller.app/*
@@ -82,6 +82,8 @@
     // show "Group of 6". {N} filled at render time.
     CASUAL_SUB:        'CASUAL BOOKING (NO PHOTO REQUIRED)',
     CASUAL_GROUP_TYPE: 'Group of {N}',
+    FLAG_PARTY_GUESTS:  true,          // on a PARTY booking (has a form whose name mentions "party"), label admission tiles "Party Guest" instead of Adult/Child
+    PARTY_GUEST_LABEL:  'Party Guest', // the label used for party admission tiles
     // Shown in the name slot when a ticket genuinely has no holder name anywhere (blank on the ticket AND
     // absent from the Ticket Holder Details form) — e.g. a child added at the door and never named. Sentence
     // case + same name font, so staff can tell "customer didn't provide it" apart from "script missed it".
@@ -1102,6 +1104,14 @@
     return null;
   }
   function ageIconKey(t) { return ageType(t) || 'adult'; }   // icon fallback stays 'adult'
+  // A booking is a PARTY when it carries a ROLLER form whose name mentions "party" (e.g. "Party Details",
+  // "1-Week Out: Hosted Party Details"). Scoped to <app-booking-forms> so the "Party Room" resource / party
+  // discount elsewhere in the panel never trigger it. Graceful: if the component is ever renamed, it just
+  // stops flagging (falls back to Adult/Child), never breaks.
+  function rczIsPartyBooking() {
+    var f = document.querySelector('app-booking-forms');
+    return !!(f && /party/i.test(f.textContent || ''));
+  }
   // Tidy a non-admission product type for the tile label: drop a leading "N x", trailing pricing and parentheticals.
   function typeLabel(t) {
     return String(t || '').replace(/^\s*\d+\s*x\s*/i, '').replace(/\s*@.*$/, '').replace(/\s*\([^)]*\)\s*/g, ' ').replace(/\s+/g, ' ').trim();
@@ -1121,9 +1131,12 @@
   function setAgeText(btn, typeRaw, name) {
     if (!btn) return;
     var at = ageType(typeRaw);
-    // Admission -> the age word (Infant/Child/Adult); non-admission (gift card, retail, package) -> its real
-    // product type ("Gift Card"), never a bogus "Adult".
-    var ty = at ? (at.charAt(0).toUpperCase() + at.slice(1)) : typeLabel(typeRaw);
+    // Party booking -> admission tiles read "Party Guest" (flag the whole party). Otherwise: admission -> the age
+    // word (Infant/Child/Adult); non-admission (gift card, retail, package) -> its real product type, never a
+    // bogus "Adult". Non-admission items on a party (food/add-ons) keep their real type — only age tiles flip.
+    var ty = (CFG.FLAG_PARTY_GUESTS && state.isParty && at) ? CFG.PARTY_GUEST_LABEL
+           : at ? (at.charAt(0).toUpperCase() + at.slice(1))
+           : typeLabel(typeRaw);
     var nm = proper(firstName(name || ''));
     var oi = btn.querySelector('img.rcz-ageicon'); if (oi) oi.remove();   // drop any prior silhouette
     var mi = btn.querySelector('mat-icon'); if (mi) mi.style.display = 'none';
@@ -1713,6 +1726,7 @@
       tagProfileOnlyCards();   // hide the check-in tick on membership tiles under "MEMBERSHIP PROFILES ONLY" (needs .rcz-mem from markSkips)
       toggleBulkCheckinBtn();  // hide the blue bulk "check (N)" button when a membership profile is selected
       state.memLinks = membershipLinkMap();  // member name -> detail URL, scraped from the discounts panel
+      state.isParty = CFG.FLAG_PARTY_GUESTS && rczIsPartyBooking();  // party booking? -> tiles label admission guests "Party Guest"
       document.querySelectorAll('app-bip-summary:not(.rcz-skip) .summary__wrapper').forEach(function (w) {
         var memHost = w.closest('app-bip-summary');
         if (memHost && memHost.classList.contains('rcz-mem')) { renderMembership(w, memHost); return; }
