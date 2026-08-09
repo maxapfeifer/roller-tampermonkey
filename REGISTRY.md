@@ -35,6 +35,8 @@ Every customisation the userscript (`venue-roller-checkin.user.js`) makes to ROL
 | A18 | `getUserMedia` override feeding the chosen file into ROLLER's own Capture pipeline | ROLLER captures from the camera *track*, so a file has to masquerade as the camera to save correctly | `PHOTO_FILE_UPLOAD` | — |
 | A18b | On a **party booking**, admission tiles read **"Party Guest"** — big centre label AND the bottom-left tag (was "Casual Guest") — and ROLLER's product line ("Number of Children") is hidden | Flag party attendees at a glance; a booking is a party when it carries a form whose name mentions "party" (detected via `<app-booking-forms>`, scoped so the Party Room resource / party discount don't false-trigger). Only party admission tiles are affected (food/add-ons keep their real type) | `FLAG_PARTY_GUESTS`, `PARTY_GUEST_LABEL` | — |
 
+| A25 | **Guest-tab Name field locked** — greyed + read-only with an inline **"Edit"**; clicking Edit shows a warning ("A membership may NOT be changed from one person to another…") and only on acknowledgement does it become editable (re-locks each page load) | Stop a membership being silently reassigned to a different person via the openly-editable name field; force staff to pause and confirm it's only a spelling/cultural-name correction | `LOCK_MEMBER_NAME`, `NAME_EDIT_LABEL`, `NAME_WARN_TEXT` | `name-lock` |
+
 ## A′. Member-detection data rules (how a ticket becomes "member")
 
 | # | Tweak | Why | Flag | Watchdog |
