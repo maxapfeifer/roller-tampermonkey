@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Venue — ROLLER Check-in Cards + Member Photos
 // @namespace    venue.roller.checkin-cards
-// @version      5.158
+// @version      5.159
 // @description  Reformats the ROLLER POS booking check-in list into full-frame photo cards, surfaces member photos on load (no Verify click), alerts when a member has no photo, handles family memberships (best-effort photos + add-name prompt) and close/similar name matches.
 // @match        https://pos.roller.app/*
 // @match        https://*.roller.app/*
@@ -48,6 +48,7 @@
     REDEEM_NOPHOTO_SUB: 'PHOTO REQUIRED',  // second line (wraps to fill the small grey square)
     LOCK_MEMBER_NAME:  true,               // on the Guest tab, lock the member Name field (grey + inline "Edit"); clicking Edit shows a warning before it becomes editable
     NAME_EDIT_LABEL:   'Edit',
+    NAME_WARN_TITLE:   'Caution: Name changes are not permitted',
     NAME_WARN_TEXT:    'A membership may NOT be changed from one person to another. Please only ever edit this "Name" field if you are correcting spelling or a cultural delta (i.e. Amending from a native to western name).',
     DASHBOARD_GUESTS_MINUS_MEMBERSHIPS: true,  // on manage.roller.app dashboard, display "Guests booked" NET of "New memberships" (guests - new memberships)
     DASHBOARD_HIDE_FINANCIALS: true,           // on manage.roller.app dashboard, remove the "Funds received" + "Revenue" summary tiles and the "Funds received ($)" product-sales column
@@ -76,6 +77,7 @@
     SEARCH_OTHER_LABEL:'OTHER',                      // badge text for a result with no guest attached (walk-up café/retail/misc)
     BLOCK_PROFILE_CHECKIN: true,  // hide the check-in tick on membership tiles under the "MEMBERSHIP PROFILES ONLY" (ROLLER's OPEN ITEMS) section — those are membership PROFILES, not a dated admission. ALL member types. Tiles under a DATE section (a real session booking) keep their tick.
     HIDE_MEMBER_TICK: true,      // on a membership PROFILE detail page (member profile via search, or a membership item detail), hide ROLLER's check-in tick in the header. All member types. Leaves the Back button and ticket item details alone.
+    HIDE_MEMBERSHIP_CHECKIN: true, // on ANY membership screen (/search/memberships/...), hide the per-row check-in tick buttons (check-in-button-<id>) AND the row/select-all checkboxes revealed by the "Memberships (N/M)" filter — staff must NOT check members in from a membership profile (check in via a ticket/booking instead). Does not touch /search/bookings where check-in is legitimate.
     // Age-type icons for casual/foster tiles (infant/child/adult), by ticket type. Populated with data:URIs
     // just below the CFG block (kept out of the literal so the base64 blobs don't clutter the config).
     AGE_ICONS:        {},
@@ -1700,6 +1702,8 @@
       // the CSS hides ROLLER's header check-in tick. Only membership headers (product name contains
       // "Membership") — plain ticket item details keep their tick.
       if (CFG.HIDE_MEMBER_TICK) { var _mh = /^\/search\/(memberships\/\d+\/\d+|bookings\/\d+\/\d+)/.test(location.pathname) ? document.querySelector('.bip-summary-header') : null; document.body.classList.toggle('rcz-hidetick', !!(_mh && /membership/i.test(_mh.textContent || ''))); }
+      // On any membership screen, hide the per-row check-in ticks + selection checkboxes so a member can't be checked in from a profile (they must be checked in via a ticket/booking).
+      if (CFG.HIDE_MEMBERSHIP_CHECKIN) document.body.classList.toggle('rcz-memcheckin-off', /^\/search\/memberships\//.test(location.pathname));
       if (membershipDetailRoute()) ensureBackButtons(); else removeBackButtons();
       if (!activeRoute()) {
         // not the booking check-in list -> strip our styling/overlays so ROLLER's native pages work
@@ -2429,6 +2433,15 @@
       'body.rcz-hidetick .bip-summary-header app-icon-button:has(button[id^="check-in-button"]){display:none !important;}',
       'body.rcz-hidetick .bip-summary-header button[id^="check-in-button"]{display:none !important;}'
     );
+    if (CFG.HIDE_MEMBERSHIP_CHECKIN) rules.push(
+      // On a membership profile (/search/memberships/...), remove the per-row check-in ticks and the
+      // row/select-all checkboxes (revealed by the "Memberships (N/M)" filter) so a member cannot be
+      // checked in from here. Whole membership area only — /search/bookings check-in is untouched.
+      'body.rcz-memcheckin-off app-bip-summary app-icon-button:has(button[id^="check-in-button"]){display:none !important;}',
+      'body.rcz-memcheckin-off app-bip-summary button[id^="check-in-button"]{display:none !important;}',
+      'body.rcz-memcheckin-off mat-checkbox:has(input[id^="booking-details-checkbox-"]){display:none !important;}',
+      'body.rcz-memcheckin-off mat-checkbox:has(input#select-all-checkbox-input){display:none !important;}'
+    );
     if (CFG.PHOTO_FILE_UPLOAD) rules.push(
       '.rcz-filewrap{display:flex !important;justify-content:center !important;margin:10px 0 4px !important;}',
       '.rcz-filebtn{display:flex !important;flex-direction:column !important;align-items:center !important;gap:2px !important;width:100% !important;max-width:220px !important;padding:10px 16px !important;border:1.5px dashed #9aa3af !important;border-radius:10px !important;background:#fff !important;cursor:pointer !important;text-align:center !important;}',
@@ -2661,7 +2674,7 @@
     scrim.setAttribute('role', 'dialog'); scrim.setAttribute('aria-modal', 'true');
     scrim.style.cssText = 'position:fixed;inset:0;z-index:2147483000;background:rgba(16,19,27,.55);-webkit-backdrop-filter:blur(2px);backdrop-filter:blur(2px);display:flex;align-items:center;justify-content:center;padding:24px;font-family:Roboto,Arial,sans-serif;';
     scrim.innerHTML = '<div style="width:540px;max-width:100%;background:#fff;border-radius:16px;box-shadow:0 22px 64px rgba(0,0,0,.4);padding:28px 30px 22px;text-align:center;">' +
-      '<div style="font:800 21px/1.2 Roboto,Arial,sans-serif;color:#e5231b;margin:0 0 14px;">Editing a membership name</div>' +
+      '<div style="font:800 21px/1.2 Roboto,Arial,sans-serif;color:#e5231b;margin:0 0 14px;">'+esc(CFG.NAME_WARN_TITLE)+'</div>' +
       '<div style="font:400 16px/1.55 Roboto,Arial,sans-serif;color:#2f3540;margin:0 0 24px;">' + esc(CFG.NAME_WARN_TEXT) + '</div>' +
       '<div style="display:flex;gap:12px;justify-content:center;">' +
       '<button type="button" class="rcz-nw-cancel" style="padding:12px 22px;border:1.5px solid #c7ccd3;border-radius:11px;background:#fff;color:#2f3540;font:700 15px Roboto,Arial,sans-serif;cursor:pointer;">Cancel</button>' +
@@ -2841,7 +2854,7 @@
     { id: 'pos-section-pills',   why: 'Section relabels + enlargement target span.ui-pill__text.',                                     applies: function () { return activeRoute() && !!document.querySelector('app-card'); }, ok: function () { return !!document.querySelector('span.ui-pill__text'); } },
     // NB: on a booking/membership DETAIL page the current booking renders as an <app-booking-search-result> HEADER
     // with NO clickable anchor — that's not a results list to badge, so skip detail routes (else it false-fires).
-    { id: 'search-rows',         why: 'Search MEMBERSHIP/TICKETS/OTHER badges read the receipt from a[id^="booking-search-result-"].', applies: function () { return !/^\/search\/(bookings\/\d+|memberships\/\d+\/\d+)/.test(location.pathname) && !!document.querySelector('app-booking-search-result'); }, ok: function () { return !!document.querySelector('a[id^="booking-search-result-"]'); } },
+    { id: 'search-rows',         why: 'Search MEMBERSHIP/TICKETS/OTHER badges read the receipt from a[id^="booking-search-result-"].', applies: function () { return /^\/search\/bookings\/?$/.test(location.pathname) && !!document.querySelector('app-booking-search-result'); }, ok: function () { return !!document.querySelector('a[id^="booking-search-result-"]'); } },
     // applies only when a member CARD is actually shown (not just an empty dialog); ok = the card has an image slot,
     // either the no-photo placeholder OR a real <img> (a member WITH a photo). Neither present = structure changed.
     { id: 'redeem-photo-card',   why: 'The "PHOTO REQUIRED" warning targets .membership-card__image-placeholder in app-dialog-redeem-membership.', applies: function () { return !!document.querySelector('app-dialog-redeem-membership app-membership-card'); }, ok: function () { return !!document.querySelector('app-dialog-redeem-membership app-membership-card .membership-card__image-placeholder, app-dialog-redeem-membership app-membership-card img'); } },
