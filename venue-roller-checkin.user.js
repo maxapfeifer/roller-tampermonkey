@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Venue — ROLLER Check-in Cards + Member Photos
 // @namespace    venue.roller.checkin-cards
-// @version      5.157
+// @version      5.158
 // @description  Reformats the ROLLER POS booking check-in list into full-frame photo cards, surfaces member photos on load (no Verify click), alerts when a member has no photo, handles family memberships (best-effort photos + add-name prompt) and close/similar name matches.
 // @match        https://pos.roller.app/*
 // @match        https://*.roller.app/*
@@ -46,6 +46,9 @@
     LABEL_REDEEM_NOPHOTO: true,        // overlay a "no photo on file" warning on the grey placeholder in ROLLER's Redeem-membership panel
     REDEEM_NOPHOTO_HD:  'WARNING:',    // first line of that warning
     REDEEM_NOPHOTO_SUB: 'PHOTO REQUIRED',  // second line (wraps to fill the small grey square)
+    LOCK_MEMBER_NAME:  true,               // on the Guest tab, lock the member Name field (grey + inline "Edit"); clicking Edit shows a warning before it becomes editable
+    NAME_EDIT_LABEL:   'Edit',
+    NAME_WARN_TEXT:    'A membership may NOT be changed from one person to another. Please only ever edit this "Name" field if you are correcting spelling or a cultural delta (i.e. Amending from a native to western name).',
     DASHBOARD_GUESTS_MINUS_MEMBERSHIPS: true,  // on manage.roller.app dashboard, display "Guests booked" NET of "New memberships" (guests - new memberships)
     DASHBOARD_HIDE_FINANCIALS: true,           // on manage.roller.app dashboard, remove the "Funds received" + "Revenue" summary tiles and the "Funds received ($)" product-sales column
     // ---- WATCHDOG: silent health telemetry across all deployments ----
@@ -1691,6 +1694,7 @@
       labelRedeemNoPhoto();    // "PHOTO REQUIRED" warning on the grey no-photo tile in the Redeem-membership dialog (any route)
       adjustGuestsBooked();    // manage.roller.app dashboard: show Guests booked net of New memberships
       ensureFileUploadBtn();   // "Choose a photo file" beside ROLLER's camera capture (runs on the member/item detail pages too, so it's before the activeRoute gate)
+      lockNameField();         // Guest tab: lock the member Name field behind an Edit + warning (item-detail page, before the gate)
       tagSearchRows();         // badge search-result rows MEMBERSHIP vs TICKETS (search list isn't the activeRoute, so before the gate)
       // On a membership PROFILE detail (member profile via search, or a membership item detail) tag <body> so
       // the CSS hides ROLLER's header check-in tick. Only membership headers (product name contains
@@ -2292,6 +2296,9 @@
       try {
         if (ev.defaultPrevented) return;
         if (ev.button !== 0 || ev.metaKey || ev.ctrlKey || ev.shiftKey || ev.altKey) return; // let new-tab etc. through
+        // Guest-tab "Edit" on the locked member Name field -> show the warning; only unlock on acknowledgement.
+        var _ne = ev.target && ev.target.closest ? ev.target.closest('.rcz-nameedit') : null;
+        if (_ne) { ev.preventDefault(); ev.stopImmediatePropagation(); showNameWarn(_ne.getAttribute('data-rcz-nameedit')); return; }
         // "Done" on a child member page: let ROLLER save, then step back past the parent account page it
         // pushes (and the child edit page) to where the user actually came from. No preventDefault — the
         // save + native navigation must run; we only correct the destination afterwards.
@@ -2394,6 +2401,13 @@
       '#booking-membership-verification-banner{display:none !important;}'
     ];
     if (CFG.HIDE_REDEEM) rules.push('#redeem-membership-button,app-generic-button:has(#redeem-membership-button){display:none !important;}');
+    if (CFG.LOCK_MEMBER_NAME) rules.push(
+      // Locked (grey, read-only) member Name field on the Guest tab, with an inline "Edit" on the right.
+      'input.rcz-namelock{background:#f0f1f2 !important;color:#5b636d !important;cursor:default !important;padding-right:56px !important;}',
+      '.rcz-namelock-wrap{position:relative !important;}',
+      '.rcz-nameedit{position:absolute !important;right:14px !important;top:50% !important;transform:translateY(-50%) !important;z-index:5 !important;color:#2f3540 !important;font:600 14px Roboto,Arial,sans-serif !important;cursor:pointer !important;}',
+      '.rcz-nameedit:hover{text-decoration:underline !important;}'
+    );
     if (CFG.LABEL_REDEEM_NOPHOTO) rules.push(
       // Warn on the grey no-photo placeholder in the Redeem-membership dialog. Scoped to that dialog, and the
       // placeholder only renders when the member has NO photo, so the warning shows exactly when it should.
@@ -2609,6 +2623,56 @@
     document.querySelectorAll('.image-capture').forEach(function (cap) { addFileBtn(cap); });
   }
 
+  // ---- Guest-tab member NAME lock ------------------------------------------------------------------------
+  // The Name field on the Guest tab (input[id^="booking-detail-name-"]) is openly editable, which risks a
+  // membership being silently reassigned to a different person. Lock it grey + read-only with an inline "Edit";
+  // clicking Edit shows a warning, and only on acknowledgement does the field become editable. Re-locks on each
+  // page load (the unlock lasts only for that editing session). Re-applied on render in case Angular re-renders
+  // the input. Graceful: if ROLLER renames the input id, the field simply stays natively editable (unprotected),
+  // never broken.
+  function lockNameField() {
+    if (!CFG.LOCK_MEMBER_NAME) return;
+    document.querySelectorAll('input[id^="booking-detail-name-"]').forEach(function (inp) {
+      if (inp.getAttribute('data-rcz-unlocked') === '1') return;   // staff chose to edit this session -> leave editable
+      if (!inp.readOnly) inp.readOnly = true;
+      if (!inp.classList.contains('rcz-namelock')) inp.classList.add('rcz-namelock');
+      var wrap = inp.closest('.mat-mdc-text-field-wrapper') || inp.parentElement;
+      if (wrap) {
+        if (!wrap.classList.contains('rcz-namelock-wrap')) wrap.classList.add('rcz-namelock-wrap');
+        if (!wrap.querySelector('.rcz-nameedit')) {
+          var e = document.createElement('span'); e.className = 'rcz-nameedit'; e.textContent = CFG.NAME_EDIT_LABEL || 'Edit';
+          e.setAttribute('data-rcz-nameedit', inp.id);
+          wrap.appendChild(e);
+        }
+      }
+    });
+  }
+  function unlockNameField(id) {
+    var inp = document.getElementById(id); if (!inp) return;
+    inp.setAttribute('data-rcz-unlocked', '1');
+    inp.readOnly = false; inp.classList.remove('rcz-namelock');
+    var wrap = inp.closest('.mat-mdc-text-field-wrapper');
+    if (wrap) { var e = wrap.querySelector('.rcz-nameedit'); if (e) e.remove(); wrap.classList.remove('rcz-namelock-wrap'); }
+    try { inp.focus(); inp.select(); } catch (e) {}
+  }
+  function showNameWarn(id) {
+    if (document.getElementById('rcz-namewarn')) return;
+    var scrim = document.createElement('div'); scrim.id = 'rcz-namewarn';
+    scrim.setAttribute('role', 'dialog'); scrim.setAttribute('aria-modal', 'true');
+    scrim.style.cssText = 'position:fixed;inset:0;z-index:2147483000;background:rgba(16,19,27,.55);-webkit-backdrop-filter:blur(2px);backdrop-filter:blur(2px);display:flex;align-items:center;justify-content:center;padding:24px;font-family:Roboto,Arial,sans-serif;';
+    scrim.innerHTML = '<div style="width:540px;max-width:100%;background:#fff;border-radius:16px;box-shadow:0 22px 64px rgba(0,0,0,.4);padding:28px 30px 22px;text-align:center;">' +
+      '<div style="font:800 21px/1.2 Roboto,Arial,sans-serif;color:#e5231b;margin:0 0 14px;">Editing a membership name</div>' +
+      '<div style="font:400 16px/1.55 Roboto,Arial,sans-serif;color:#2f3540;margin:0 0 24px;">' + esc(CFG.NAME_WARN_TEXT) + '</div>' +
+      '<div style="display:flex;gap:12px;justify-content:center;">' +
+      '<button type="button" class="rcz-nw-cancel" style="padding:12px 22px;border:1.5px solid #c7ccd3;border-radius:11px;background:#fff;color:#2f3540;font:700 15px Roboto,Arial,sans-serif;cursor:pointer;">Cancel</button>' +
+      '<button type="button" class="rcz-nw-ok" style="padding:12px 22px;border:none;border-radius:11px;background:#2f6fed;color:#fff;font:800 15px Roboto,Arial,sans-serif;cursor:pointer;">I understand — edit</button>' +
+      '</div></div>';
+    document.body.appendChild(scrim);
+    var c = scrim.querySelector('.rcz-nw-cancel'); if (c) c.addEventListener('click', function () { scrim.remove(); });
+    var o = scrim.querySelector('.rcz-nw-ok'); if (o) o.addEventListener('click', function () { scrim.remove(); unlockNameField(id); });
+    scrim.addEventListener('click', function (ev) { if (ev.target === scrim) scrim.remove(); });
+  }
+
   // Reword ROLLER's native "Missing member photos" banner sub-line. Its <p class="rds-banner__message">
   // reads "Add missing photos to help staff verify members quickly." — we swap it for a cancellation warning.
   // Matched by the distinctive native text (not an id), and re-applied on every render since ROLLER re-renders
@@ -2781,6 +2845,9 @@
     // applies only when a member CARD is actually shown (not just an empty dialog); ok = the card has an image slot,
     // either the no-photo placeholder OR a real <img> (a member WITH a photo). Neither present = structure changed.
     { id: 'redeem-photo-card',   why: 'The "PHOTO REQUIRED" warning targets .membership-card__image-placeholder in app-dialog-redeem-membership.', applies: function () { return !!document.querySelector('app-dialog-redeem-membership app-membership-card'); }, ok: function () { return !!document.querySelector('app-dialog-redeem-membership app-membership-card .membership-card__image-placeholder, app-dialog-redeem-membership app-membership-card img'); } },
+    // Guest-tab name lock hooks input[id^="booking-detail-name-"]. Applies on the item-detail Guest tab (detected
+    // via the photo-capture component, which only shows there); if the name input id is renamed it reports BROKEN.
+    { id: 'name-lock',           why: 'Member-name lock (grey field + Edit + warning) targets input[id^="booking-detail-name-"] on the Guest tab.', applies: function () { return /^\/search\/bookings\/\d+\/\d+/.test(location.pathname) && !!document.querySelector('.image-capture'); }, ok: function () { return !!document.querySelector('input[id^="booking-detail-name-"]'); } },
     { id: 'dash-guests',         why: 'Guests-booked net + Funds/Revenue tile removal rely on h3[qa-id="dashboard-info-*"] + p.dashboard-info__count.', applies: rczDashCheckable, ok: function () { return rczAny('h3[qa-id="dashboard-info-Guests booked"]') && rczAny('p.dashboard-info__count'); } },
     { id: 'dash-newmemberships', why: 'The Guests-booked net subtracts the "New memberships" value found by that label.',              applies: rczDashCheckable, ok: function () { return rczAnyText('p', /^\s*New memberships\s*$/i); } },
     { id: 'dash-product-grid',   why: 'Funds-received column removal targets the .dx-datagrid header row containing "Funds received".', applies: rczDashCheckable, ok: function () { return rczDashGridOk(); } },
