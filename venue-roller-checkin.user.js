@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Venue — ROLLER Check-in Cards + Member Photos
 // @namespace    venue.roller.checkin-cards
-// @version      5.159
+// @version      5.160
 // @description  Reformats the ROLLER POS booking check-in list into full-frame photo cards, surfaces member photos on load (no Verify click), alerts when a member has no photo, handles family memberships (best-effort photos + add-name prompt) and close/similar name matches.
 // @match        https://pos.roller.app/*
 // @match        https://*.roller.app/*
@@ -49,7 +49,7 @@
     LOCK_MEMBER_NAME:  true,               // on the Guest tab, lock the member Name field (grey + inline "Edit"); clicking Edit shows a warning before it becomes editable
     NAME_EDIT_LABEL:   'Edit',
     NAME_WARN_TITLE:   'Caution: Name changes are not permitted',
-    NAME_WARN_TEXT:    'A membership may NOT be changed from one person to another. Please only ever edit this "Name" field if you are correcting spelling or a cultural delta (i.e. Amending from a native to western name).',
+    NAME_WARN_TEXT:    'A membership may NOT be changed from one person to another. Please only ever edit the "Name" of a member if you\'re correcting spelling or language variations (English name v Chinese Name, for example)',
     DASHBOARD_GUESTS_MINUS_MEMBERSHIPS: true,  // on manage.roller.app dashboard, display "Guests booked" NET of "New memberships" (guests - new memberships)
     DASHBOARD_HIDE_FINANCIALS: true,           // on manage.roller.app dashboard, remove the "Funds received" + "Revenue" summary tiles and the "Funds received ($)" product-sales column
     // ---- WATCHDOG: silent health telemetry across all deployments ----
