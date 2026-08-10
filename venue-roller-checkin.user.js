@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Venue — ROLLER Check-in Cards + Member Photos
 // @namespace    venue.roller.checkin-cards
-// @version      5.160
+// @version      5.161
 // @description  Reformats the ROLLER POS booking check-in list into full-frame photo cards, surfaces member photos on load (no Verify click), alerts when a member has no photo, handles family memberships (best-effort photos + add-name prompt) and close/similar name matches.
 // @match        https://pos.roller.app/*
 // @match        https://*.roller.app/*
@@ -58,6 +58,11 @@
     WATCHDOG_EVERY_MS: 60000,   // how often to run the checks (1 min)
     WATCHDOG_STREAK: 3,         // must be broken this many consecutive runs before reporting (rides out page-load transients)
     WATCHDOG_MIN_HOURS: 24,     // per machine, report each check+version at most once in this many hours (anti-spam)
+    // ---- AUDIT: notify the admin when staff take certain actions (reuses the watchdog email endpoint) ----
+    // NOTE: unlike the watchdog (which sends NO guest data), audit emails deliberately include the member's
+    // old + new NAME — that is the point of the audit. They go only to the admin inbox behind AUDIT_URL.
+    AUDIT_NAME_EDITS: true,     // email the admin when a member's Name is actually changed on the Guest tab (after Edit -> unlock -> value changed)
+    AUDIT_URL: '',             // Google Apps Script webhook for audit emails; '' = reuse WATCHDOG_URL. Requires the Apps Script to handle {kind:'audit'} payloads.
     DONE_STEP_BACK:   true,   // after "Done" on a child member page, step back past the parent page it pushes
     FLAG_MISASSIGNED: false,  // OFF: a discount mis-assignment where the real member IS on the booking shows nothing (normal member). Set true to restore the "MEMBERSHIP DISCOUNT MIS-ASSIGNED" reassurance note.
     WARN_HEADING:     'WARNING: MISSING DATA',                   // ACTION REQUIRED banner big heading (missing-data / ADD PHOTO box only)
@@ -2666,7 +2671,45 @@
     inp.readOnly = false; inp.classList.remove('rcz-namelock');
     var wrap = inp.closest('.mat-mdc-text-field-wrapper');
     if (wrap) { var e = wrap.querySelector('.rcz-nameedit'); if (e) e.remove(); wrap.classList.remove('rcz-namelock-wrap'); }
+    if (CFG.AUDIT_NAME_EDITS) armNameAudit(inp);
     try { inp.focus(); inp.select(); } catch (e) {}
+  }
+  // AUDIT: once a name field is unlocked for editing, capture its baseline value and email the admin if the
+  // committed value actually differs (a real name change). Fires on blur/change; de-duped per committed value.
+  function armNameAudit(inp) {
+    if (!inp || inp.getAttribute('data-rcz-audit') === '1') return;
+    inp.setAttribute('data-rcz-audit', '1');
+    inp.setAttribute('data-rcz-origname', inp.value || '');
+    var commit = function () {
+      var orig = inp.getAttribute('data-rcz-origname') || '';
+      var now  = inp.value || '';
+      if (now.trim() === orig.trim()) return;                    // unchanged or reverted -> nothing to report
+      if (inp.getAttribute('data-rcz-auditsent') === now) return; // already reported this exact value
+      inp.setAttribute('data-rcz-auditsent', now);
+      rczAuditSend({ event: 'Member name changed', field: inp.id, oldName: orig, newName: now, path: location.pathname });
+    };
+    inp.addEventListener('blur', commit);
+    inp.addEventListener('change', commit);
+  }
+  // The logged-in POS operator (top-left of the shell) — "who made the change". Best-effort; '' if not found.
+  function rczOperator() { try { var e = document.querySelector('.header__user'); return e ? (e.textContent || '').trim() : ''; } catch (x) { return ''; } }
+  // Send an audit event to the admin inbox via the Apps Script webhook (kind:'audit'). Mirrors rczReport's
+  // sendBeacon + no-cors fetch fallback so it works under @grant none. Path digits are KEPT (admin needs the ids).
+  function rczAuditSend(payload) {
+    var url = CFG.AUDIT_URL || CFG.WATCHDOG_URL;
+    if (!url || !CFG.AUDIT_NAME_EDITS) return;
+    try {
+      payload.kind = 'audit';
+      payload.version = SCRIPT_VERSION;
+      payload.machine = rczMachineId();
+      if (!payload.operator) payload.operator = rczOperator();
+      payload.date = new Date().toISOString();
+    } catch (e) {}
+    var body; try { body = JSON.stringify(payload); } catch (e) { return; }
+    var sent = false;
+    try { sent = navigator.sendBeacon(url, body); } catch (e) {}
+    if (!sent) { try { fetch(url, { method: 'POST', mode: 'no-cors', keepalive: true, body: body }); } catch (e) {} }
+    try { console.log('[rcz] audit sent:', payload.event, '"' + payload.oldName + '" -> "' + payload.newName + '"'); } catch (e) {}
   }
   function showNameWarn(id) {
     if (document.getElementById('rcz-namewarn')) return;
