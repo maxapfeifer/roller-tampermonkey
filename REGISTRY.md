@@ -110,3 +110,4 @@ All previously-inferred reasons confirmed correct:
 - `FLAG_MISASSIGNED` (off) — reassurance note for a discount mis-assignment where the real member is on the booking.
 - `SHOW_NAME_MEANING` (off) — first-name meaning line (dictionary built, collides with the tier badge; needs repositioning before re-enabling).
 - `AUTO_GUEST_TAB` (off) — auto-navigate to the Guest tab + open camera; disabled because ROLLER re-flips the tab.
+| A27 | **Audit email on member name change** — when staff Edit -> unlock -> actually change a member Name on the Guest tab, the admin is emailed (old->new name, till operator, booking/item ids, machine, version, time) via the watchdog Apps Script with `{kind:"audit"}` | Give the admin an audit trail of who reassigned/renamed a membership and to what; deters silent name swaps | `AUDIT_NAME_EDITS`, `AUDIT_URL` (falls back to `WATCHDOG_URL`) | (uses the watchdog endpoint; needs Apps Script `kind:"audit"` branch) |
