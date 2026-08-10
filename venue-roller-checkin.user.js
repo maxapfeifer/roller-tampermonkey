@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Venue — ROLLER Check-in Cards + Member Photos
 // @namespace    venue.roller.checkin-cards
-// @version      5.161
+// @version      5.162
 // @description  Reformats the ROLLER POS booking check-in list into full-frame photo cards, surfaces member photos on load (no Verify click), alerts when a member has no photo, handles family memberships (best-effort photos + add-name prompt) and close/similar name matches.
 // @match        https://pos.roller.app/*
 // @match        https://*.roller.app/*
@@ -143,6 +143,10 @@
     // fighting it — the detail page just lands where ROLLER puts it (usually the Membership tab) and staff
     // click the Guest tab + the Capture button themselves. Flip back to true to restore the auto flow.
     AUTO_GUEST_TAB:    false,
+    // RETIRED at venue request (was always-on): after taking a VISITING (other-museum) member's photo, show the
+    // "send a WhatsApp to the admin team quoting MEMBER PHOTO <id>" handoff modal so the photo could be transferred
+    // to their home venue. No longer needed — set false so it never arms or fires. Flip true to bring it back.
+    VISITING_PHOTO_HANDOFF: false,
     // Does a MISSING PHOTO block the shield? No — deliberately. We tell staff that a check-in WITHOUT a
     // photo is what triggers the cancellation flag, so blocking the check-in outright made that warning
     // describe something that could never happen, and left staff stuck with a guest in front of them.
@@ -1724,7 +1728,7 @@
         // booking. state.byCard (keyed by bookingItemPartId) persists across the in-app nav from the booking.
         try {
           var _vm = location.pathname.match(/^\/search\/bookings\/(\d+)\/(\d+)/);
-          if (_vm && document.querySelector('.image-capture')) {
+          if (CFG.VISITING_PHOTO_HANDOFF && _vm && document.querySelector('.image-capture')) {
             var _vc = state.byCard[_vm[2]], _mine = _vm[1] + ':' + _vm[2], _cur = sessionStorage.getItem('rcz-handoff') || '';
             if (_vc && _vc.visiting && _cur.indexOf(_mine) < 0) sessionStorage.setItem('rcz-handoff', 'armed:' + _mine);
           }
@@ -1737,7 +1741,7 @@
       retextMissingPhotosBanner();   // reword ROLLER's native "Missing member photos" banner sub-line
       retextSectionPills();          // relabel ROLLER's grey section pills ("OPEN ITEMS", "TODAY")
       // #4: back on the booking screen with a "ready" handoff for THIS booking -> fire the modal once
-      try { var _hv = sessionStorage.getItem('rcz-handoff'), _hb = (location.pathname.match(/\/bookings\/(\d+)/) || [])[1]; if (_hv && _hb && _hv.indexOf('ready:' + _hb + ':') === 0) { var _hc = _hv.slice(('ready:' + _hb + ':').length); sessionStorage.removeItem('rcz-handoff'); showHandoffModal(_hb, _hc); } } catch (e) {}
+      try { var _hv = sessionStorage.getItem('rcz-handoff'), _hb = (location.pathname.match(/\/bookings\/(\d+)/) || [])[1]; if (CFG.VISITING_PHOTO_HANDOFF && _hv && _hb && _hv.indexOf('ready:' + _hb + ':') === 0) { var _hc = _hv.slice(('ready:' + _hb + ':').length); sessionStorage.removeItem('rcz-handoff'); showHandoffModal(_hb, _hc); } } catch (e) {}
       markSkips();
       ensureShields();
       shorten();
@@ -2338,7 +2342,7 @@
           // membership), and arms the "text the admin team" handoff modal for when staff return here.
           if (unl.getAttribute('data-rcz-ticket')) {
             var _bid = (location.pathname.match(/\/bookings\/(\d+)/) || [])[1];
-            if (_bid) { try { sessionStorage.setItem('rcz-handoff', 'armed:' + _bid + ':' + uid); } catch (e) {} }
+            if (CFG.VISITING_PHOTO_HANDOFF && _bid) { try { sessionStorage.setItem('rcz-handoff', 'armed:' + _bid + ':' + uid); } catch (e) {} }
             var _th = unl.closest ? unl.closest('app-bip-summary') : null;
             var _tt = _th ? _th.querySelector('button[id^="booking-details-button-"]') : null;
             if (_tt) { _tt.click(); openGuestTabSoon(true); }   // ADD PHOTO -> land on the live camera
@@ -2693,6 +2697,9 @@
   }
   // The logged-in POS operator (top-left of the shell) — "who made the change". Best-effort; '' if not found.
   function rczOperator() { try { var e = document.querySelector('.header__user'); return e ? (e.textContent || '').trim() : ''; } catch (x) { return ''; } }
+  // Which of our venues this till is. Set ONCE per till: run  rczSetLocation('Chadstone')  in the console.
+  // Falls back to '' (shows "(not set)" in the audit email). Kept per-browser in localStorage so it survives reloads.
+  function rczLocation() { try { return (localStorage.getItem('rcz-location') || '').trim(); } catch (x) { return ''; } }
   // Send an audit event to the admin inbox via the Apps Script webhook (kind:'audit'). Mirrors rczReport's
   // sendBeacon + no-cors fetch fallback so it works under @grant none. Path digits are KEPT (admin needs the ids).
   function rczAuditSend(payload) {
@@ -2702,6 +2709,7 @@
       payload.kind = 'audit';
       payload.version = SCRIPT_VERSION;
       payload.machine = rczMachineId();
+      if (!payload.location) payload.location = rczLocation();
       if (!payload.operator) payload.operator = rczOperator();
       payload.date = new Date().toISOString();
     } catch (e) {}
@@ -2962,6 +2970,14 @@
       rczReport({ id: 'self-test', why: 'Manual watchdog self-test — confirms detection→email works. Not a real problem.' });
       console.log('[rcz] test alert fired' + (CFG.WATCHDOG_URL ? ' to the watchdog endpoint — check the admin inbox shortly.' : ' (no WATCHDOG_URL set — logged locally only; see rczHealth()).'));
       return true;
+    };
+    // Tag THIS till with its venue so audit emails say where a change happened. Run once per till, e.g.
+    // rczSetLocation('Chadstone'). Call with no argument to read the current label.
+    window.rczSetLocation = function (name) {
+      if (name == null) { console.log('[rcz] this till is: "' + (rczLocation() || '(not set)') + '"'); return rczLocation(); }
+      try { localStorage.setItem('rcz-location', String(name).trim()); } catch (e) {}
+      console.log('[rcz] this till is now tagged: "' + rczLocation() + '"');
+      return rczLocation();
     };
   } catch (e) {}
 
