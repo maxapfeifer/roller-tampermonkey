@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Venue — ROLLER Check-in Cards + Member Photos
 // @namespace    venue.roller.checkin-cards
-// @version      5.163
+// @version      5.164
 // @description  Reformats the ROLLER POS booking check-in list into full-frame photo cards, surfaces member photos on load (no Verify click), alerts when a member has no photo, handles family memberships (best-effort photos + add-name prompt) and close/similar name matches.
 // @match        https://pos.roller.app/*
 // @match        https://*.roller.app/*
@@ -501,6 +501,17 @@
       // A ticket is a MEMBER check-in when it carries a membership discount (bookingItemDiscount != 0).
       var memberTickets = bip.filter(function (p) { return p.bookingItemDiscount; });
       var assign = {}; // cardId -> discount
+      // Pass 0: exact NAME + exact AMOUNT match — the strongest, unambiguous signal, claimed first. This stops a
+      // name-only match (Pass 1) from cross-pairing when two tickets share the booking-holder name but belong to
+      // members of DIFFERENT ages: e.g. an Adult ticket and a Child ticket BOTH named "Han", with Han Yu's ADULT
+      // pass (−$16) and Orianne Yu's CHILD pass (−$26). Name-only matched Han's adult pass to whichever "Han" ticket
+      // came first (the child one), spilling the child pass onto the adult ticket. Requiring the amount to agree pins
+      // each pass to its correct-age ticket, matching ROLLER's own discount records. A correct pairing always has
+      // discount.amount === ticket.bookingItemDiscount, so this never mis-claims. (booking 109321637)
+      memberTickets.forEach(function (p) {
+        var d = discs.find(function (x) { return !x.used && x.name && !x.unnamed && x.name === firstName(p.name) && x.amount != null && Number(x.amount) === Number(p.bookingItemDiscount); });
+        if (d) { d.used = true; assign[p.bookingItemPartId] = d; }
+      });
       // Pass 1: match the ticket-holder's name to a membership name. Only match on an IDENTIFYING name:
       // skip discounts flagged unnamed (blank, or the account-holder name defaulted across 2+ family
       // slots). Otherwise a family whose tickets all carry the holder name "Amanda Hawker" would pair
