@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Venue — ROLLER Check-in Cards + Member Photos
 // @namespace    venue.roller.checkin-cards
-// @version      5.162
+// @version      5.163
 // @description  Reformats the ROLLER POS booking check-in list into full-frame photo cards, surfaces member photos on load (no Verify click), alerts when a member has no photo, handles family memberships (best-effort photos + add-name prompt) and close/similar name matches.
 // @match        https://pos.roller.app/*
 // @match        https://*.roller.app/*
@@ -63,6 +63,10 @@
     // old + new NAME — that is the point of the audit. They go only to the admin inbox behind AUDIT_URL.
     AUDIT_NAME_EDITS: true,     // email the admin when a member's Name is actually changed on the Guest tab (after Edit -> unlock -> value changed)
     AUDIT_URL: '',             // Google Apps Script webhook for audit emails; '' = reuse WATCHDOG_URL. Requires the Apps Script to handle {kind:'audit'} payloads.
+    // Venue-id -> friendly name for the audit "Location". Sourced automatically from ROLLER's doorlist "Current-Venue"
+    // header (captured per till, no setup). 5311 = Sandringham confirmed; the other three ids fill in the first time a
+    // till there sends any doorlist call — an unmapped till shows "Venue #<id>" so it's still distinguishable.
+    VENUE_MAP: { '5311': 'MoPA Sandringham' },
     DONE_STEP_BACK:   true,   // after "Done" on a child member page, step back past the parent page it pushes
     FLAG_MISASSIGNED: false,  // OFF: a discount mis-assignment where the real member IS on the booking shows nothing (normal member). Set true to restore the "MEMBERSHIP DISCOUNT MIS-ASSIGNED" reassurance note.
     WARN_HEADING:     'WARNING: MISSING DATA',                   // ACTION REQUIRED banner big heading (missing-data / ADD PHOTO box only)
@@ -251,9 +255,17 @@
     try {
       var m = String(url).match(/^https?:\/\/[^/]+/); if (!m) return;
       var origin = m[0], picked = {};
-      Object.keys(headers || {}).forEach(function (k) { if (AUTH_RE.test(k)) picked[k] = headers[k]; });
+      Object.keys(headers || {}).forEach(function (k) {
+        if (AUTH_RE.test(k)) picked[k] = headers[k];
+        if (k.toLowerCase() === 'current-venue' && headers[k]) rczCaptureVenue(headers[k]);  // this till's venue id (for audit Location)
+      });
       if (Object.keys(picked).length) state.authByOrigin[origin] = picked;
     } catch (e) {}
+  }
+  // Remember which ROLLER venue this till is, from the doorlist "Current-Venue" header (or a /today venueId).
+  // Stored per-browser so audit emails name the location with no per-till setup. See CFG.VENUE_MAP + rczLocation().
+  function rczCaptureVenue(id) {
+    try { id = String(id).trim(); if (!id || id === (localStorage.getItem('rcz-venue-id') || '')) return; localStorage.setItem('rcz-venue-id', id); } catch (e) {}
   }
 
   function onResponse(url, text) {
@@ -280,6 +292,7 @@
     if (!arr || !arr.length) return;
     arr.forEach(function (o) {
       if (!o) return;
+      if (o.venueId != null) rczCaptureVenue(o.venueId);   // fallback venue source (a till's today feed is its own venue)
       var receipt = o.receiptNumber != null ? o.receiptNumber
                   : o.bookingReceiptNumber != null ? o.bookingReceiptNumber
                   : o.receipt != null ? o.receipt : null;
@@ -2697,9 +2710,19 @@
   }
   // The logged-in POS operator (top-left of the shell) — "who made the change". Best-effort; '' if not found.
   function rczOperator() { try { var e = document.querySelector('.header__user'); return e ? (e.textContent || '').trim() : ''; } catch (x) { return ''; } }
-  // Which of our venues this till is. Set ONCE per till: run  rczSetLocation('Chadstone')  in the console.
-  // Falls back to '' (shows "(not set)" in the audit email). Kept per-browser in localStorage so it survives reloads.
-  function rczLocation() { try { return (localStorage.getItem('rcz-location') || '').trim(); } catch (x) { return ''; } }
+  // Which of our venues this till is, for the audit "Location". Resolution order:
+  //   1) a manual per-till label (rczSetLocation('...')) — an override, rarely needed;
+  //   2) CFG.VENUE_MAP[venueId] using the venue id auto-captured from ROLLER's doorlist Current-Venue header;
+  //   3) "Venue #<id>" if the id is known but unmapped (still distinguishes the site);
+  //   4) '' if nothing captured yet (shows "(not set)" in the email).
+  function rczVenueId() { try { return (localStorage.getItem('rcz-venue-id') || '').trim(); } catch (x) { return ''; } }
+  function rczLocation() {
+    try {
+      var manual = (localStorage.getItem('rcz-location') || '').trim(); if (manual) return manual;
+      var id = rczVenueId(); if (!id) return '';
+      return (CFG.VENUE_MAP && CFG.VENUE_MAP[id]) ? CFG.VENUE_MAP[id] : ('Venue #' + id);
+    } catch (x) { return ''; }
+  }
   // Send an audit event to the admin inbox via the Apps Script webhook (kind:'audit'). Mirrors rczReport's
   // sendBeacon + no-cors fetch fallback so it works under @grant none. Path digits are KEPT (admin needs the ids).
   function rczAuditSend(payload) {
@@ -2710,6 +2733,7 @@
       payload.version = SCRIPT_VERSION;
       payload.machine = rczMachineId();
       if (!payload.location) payload.location = rczLocation();
+      if (!payload.venueId) payload.venueId = rczVenueId();
       if (!payload.operator) payload.operator = rczOperator();
       payload.date = new Date().toISOString();
     } catch (e) {}
