@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Venue — ROLLER Check-in Cards + Member Photos
 // @namespace    venue.roller.checkin-cards
-// @version      5.164
+// @version      5.165
 // @description  Reformats the ROLLER POS booking check-in list into full-frame photo cards, surfaces member photos on load (no Verify click), alerts when a member has no photo, handles family memberships (best-effort photos + add-name prompt) and close/similar name matches.
 // @match        https://pos.roller.app/*
 // @match        https://*.roller.app/*
@@ -2711,6 +2711,7 @@
     var commit = function () {
       var orig = inp.getAttribute('data-rcz-origname') || '';
       var now  = inp.value || '';
+      if (!orig.trim()) return;                                  // old name was BLANK -> a name being ADDED, not changed; don't notify
       if (now.trim() === orig.trim()) return;                    // unchanged or reverted -> nothing to report
       if (inp.getAttribute('data-rcz-auditsent') === now) return; // already reported this exact value
       inp.setAttribute('data-rcz-auditsent', now);
