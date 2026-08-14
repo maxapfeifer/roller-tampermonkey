@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Venue — ROLLER Check-in Cards + Member Photos
 // @namespace    venue.roller.checkin-cards
-// @version      5.165
+// @version      5.166
 // @description  Reformats the ROLLER POS booking check-in list into full-frame photo cards, surfaces member photos on load (no Verify click), alerts when a member has no photo, handles family memberships (best-effort photos + add-name prompt) and close/similar name matches.
 // @match        https://pos.roller.app/*
 // @match        https://*.roller.app/*
@@ -2941,7 +2941,7 @@
     { id: 'pos-section-pills',   why: 'Section relabels + enlargement target span.ui-pill__text.',                                     applies: function () { return activeRoute() && !!document.querySelector('app-card'); }, ok: function () { return !!document.querySelector('span.ui-pill__text'); } },
     // NB: on a booking/membership DETAIL page the current booking renders as an <app-booking-search-result> HEADER
     // with NO clickable anchor — that's not a results list to badge, so skip detail routes (else it false-fires).
-    { id: 'search-rows',         why: 'Search MEMBERSHIP/TICKETS/OTHER badges read the receipt from a[id^="booking-search-result-"].', applies: function () { return /^\/search\/bookings\/?$/.test(location.pathname) && !!document.querySelector('app-booking-search-result'); }, ok: function () { return !!document.querySelector('a[id^="booking-search-result-"]'); } },
+    { id: 'search-rows',         why: 'Search MEMBERSHIP/TICKETS/OTHER badges read the receipt from a[id^="booking-search-result-"] OR the #booking-search-id .selectable fallback (tagSearchRows uses both).', applies: function () { return /^\/search\/bookings\/?$/.test(location.pathname) && !!document.querySelector('app-booking-search-result'); }, ok: function () { return !!document.querySelector('a[id^="booking-search-result-"], #booking-search-id .selectable'); } },
     // applies only when a member CARD is actually shown (not just an empty dialog); ok = the card has an image slot,
     // either the no-photo placeholder OR a real <img> (a member WITH a photo). Neither present = structure changed.
     { id: 'redeem-photo-card',   why: 'The "PHOTO REQUIRED" warning targets .membership-card__image-placeholder in app-dialog-redeem-membership.', applies: function () { return !!document.querySelector('app-dialog-redeem-membership app-membership-card'); }, ok: function () { return !!document.querySelector('app-dialog-redeem-membership app-membership-card .membership-card__image-placeholder, app-dialog-redeem-membership app-membership-card img'); } },
