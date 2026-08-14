@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Venue — ROLLER Check-in Cards + Member Photos
 // @namespace    venue.roller.checkin-cards
-// @version      5.166
+// @version      5.167
 // @description  Reformats the ROLLER POS booking check-in list into full-frame photo cards, surfaces member photos on load (no Verify click), alerts when a member has no photo, handles family memberships (best-effort photos + add-name prompt) and close/similar name matches.
 // @match        https://pos.roller.app/*
 // @match        https://*.roller.app/*
@@ -512,24 +512,26 @@
         var d = discs.find(function (x) { return !x.used && x.name && !x.unnamed && x.name === firstName(p.name) && x.amount != null && Number(x.amount) === Number(p.bookingItemDiscount); });
         if (d) { d.used = true; assign[p.bookingItemPartId] = d; }
       });
-      // Pass 1: match the ticket-holder's name to a membership name. Only match on an IDENTIFYING name:
-      // skip discounts flagged unnamed (blank, or the account-holder name defaulted across 2+ family
-      // slots). Otherwise a family whose tickets all carry the holder name "Amanda Hawker" would pair
-      // ticket[i] -> discs[i] by ROLLER's arbitrary array order, sending e.g. the Adult ticket to a
-      // Child slot. Letting those fall through to Pass 2 pairs them by the per-slot discount amount
-      // (Adult $12 vs Child $16), which lands each ticket on its correct-type membership slot.
-      memberTickets.forEach(function (p) {
-        var d = discs.find(function (x) { return !x.used && x.name && !x.unnamed && x.name === firstName(p.name); });
-        if (d) { d.used = true; assign[p.bookingItemPartId] = d; }
-      });
-      // Pass 2a: exact dollar-amount match, for ALL tickets, BEFORE any fallback. Doing every exact match
-      // first is what keeps a family correct: e.g. the Adult ticket's unique $12 must claim the Adult slot
-      // before a Child ticket (whose own discount amount doesn't line up with any slot) grabs it via the
-      // fallback below. (Previously the fallback ran per-ticket, so a mis-lining Child processed first stole
-      // the Adult's slot and the Adult spilled onto a Child slot.)
+      // Pass A: exact dollar-AMOUNT match — runs BEFORE the name-only pass. ROLLER applies each membership discount
+      // to the ticket whose price equals the discount amount, so amount is the AUTHORITATIVE signal (a −$26 child
+      // pass physically cannot sit on a $16 adult ticket). Amount-first fixes FAMILY bookings where the slot NAMES
+      // are crossed relative to the ticket ages: account 97945444 has George = CHILD pass (−$26) and Jim = ADULT
+      // pass (−$16), but the booking seated George on the ADULT ticket ($16) and Jim on the CHILD ticket ($26).
+      // Name-only matching (below) paired George → his own CHILD pass, spilling −$26 onto a $16 ticket — impossible,
+      // and the reverse of what ROLLER recorded. Amount-first pins each ticket to its correct-age pass. (Pass 0 above
+      // already claimed any ticket whose name AND amount agree, so equal-amount slots are disambiguated by name there
+      // and never mis-grabbed here.) (booking 109382842)
       memberTickets.forEach(function (p) {
         if (assign[p.bookingItemPartId]) return;
         var d = discs.find(function (x) { return !x.used && x.amount != null && Number(x.amount) === Number(p.bookingItemDiscount); });
+        if (d) { d.used = true; assign[p.bookingItemPartId] = d; }
+      });
+      // Pass 1: name-only match, for tickets whose amount lined up with no slot (e.g. percentage / uncosted discounts
+      // where amount is null). Skip discounts flagged unnamed (blank, or the account-holder name defaulted across 2+
+      // family slots) so those fall through to the leftover pass instead of pairing by ROLLER's arbitrary array order.
+      memberTickets.forEach(function (p) {
+        if (assign[p.bookingItemPartId]) return;
+        var d = discs.find(function (x) { return !x.used && x.name && !x.unnamed && x.name === firstName(p.name); });
         if (d) { d.used = true; assign[p.bookingItemPartId] = d; }
       });
       // Pass 2b: leftovers (their amount matched no slot) take any remaining discount, in order.
@@ -2927,6 +2929,18 @@
   // "Are we on the manage dashboard?" — keyed off the URL, INDEPENDENT of the qa-id/class anchors the checks
   // verify, so that a rename of those anchors surfaces as BROKEN rather than silently going n/a.
   function rczOnDashboard() { return location.hostname === 'manage.roller.app' && /(^|\/)dashboard(\/|$)/.test(location.pathname); }
+  // Does this booking actually have a checkinable ATTENDANCE tile (so a check-in button SHOULD exist)? Gift-card,
+  // retail and membership-PURCHASE bookings render tiles with NO check-in button — that's not a break, so the
+  // pos-checkin-btn check must go n/a there. True only when a tile looks like an admission AND isn't a membership/
+  // gift-card product (member check-ins on Free Play tiles say "Gold Pass"/"Member" but never the word "Membership").
+  function rczCheckinExpected() {
+    var tiles = document.querySelectorAll('app-bip-summary');
+    for (var i = 0; i < tiles.length; i++) {
+      var t = tiles[i].textContent || '';
+      if (/adult|child|infant|senior|concession|years?|yrs?|\bentry\b|session|casual|\bplay\b|book for/i.test(t) && !/\bmembership\b|unlocks|gift ?card/i.test(t)) return true;
+    }
+    return false;
+  }
   // Is the dashboard actually LOADED (vs a till left overnight whose session expired / iframe blank / logged out)?
   // Gate the dashboard checks on this so a not-loaded dashboard reports n/a, not BROKEN. Uses the broad
   // dashboard-info qa-id family as the "is the summary rendered" signal — a targeted rename of ONE tile still
@@ -2936,7 +2950,7 @@
   // Each check: applies() = are we on a page where this SHOULD be verifiable? ok() = is the anchor present?
   var WD_CHECKS = [
     { id: 'pos-tiles',           why: 'Full-frame photo tiles hook <app-bip-summary>; renamed = no tiles render.',                     applies: function () { return activeRoute() && !!document.querySelector('app-card'); }, ok: function () { return !!document.querySelector('app-bip-summary'); } },
-    { id: 'pos-checkin-btn',     why: 'Shield styling, tick-hiding and the Undo flow target button[id^="check-in-button"].',           applies: function () { return activeRoute() && !!document.querySelector('app-bip-summary'); },        ok: function () { return !!document.querySelector('button[id^="check-in-button"]'); } },
+    { id: 'pos-checkin-btn',     why: 'Shield styling, tick-hiding and the Undo flow target button[id^="check-in-button"].',           applies: function () { return activeRoute() && rczCheckinExpected(); },        ok: function () { return !!document.querySelector('button[id^="check-in-button"]'); } },
     { id: 'pos-details-btn',     why: 'Photo / age / casual overlays target button[id^="booking-details-button-"].',                  applies: function () { return activeRoute() && !!document.querySelector('app-bip-summary'); },        ok: function () { return !!document.querySelector('button[id^="booking-details-button-"]'); } },
     { id: 'pos-section-pills',   why: 'Section relabels + enlargement target span.ui-pill__text.',                                     applies: function () { return activeRoute() && !!document.querySelector('app-card'); }, ok: function () { return !!document.querySelector('span.ui-pill__text'); } },
     // NB: on a booking/membership DETAIL page the current booking renders as an <app-booking-search-result> HEADER
