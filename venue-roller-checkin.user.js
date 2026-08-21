@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Venue — ROLLER Check-in Cards + Member Photos
 // @namespace    venue.roller.checkin-cards
-// @version      5.169
+// @version      5.170
 // @description  Reformats the ROLLER POS booking check-in list into full-frame photo cards, surfaces member photos on load (no Verify click), alerts when a member has no photo, handles family memberships (best-effort photos + add-name prompt) and close/similar name matches.
 // @match        https://pos.roller.app/*
 // @match        https://*.roller.app/*
@@ -50,6 +50,9 @@
     NAME_EDIT_LABEL:   'Edit',
     NAME_WARN_TITLE:   'Caution: Name changes are not permitted',
     NAME_WARN_TEXT:    'A membership may NOT be changed from one person to another. Please only ever edit the "Name" of a member if you\'re correcting spelling or language variations (English name v Chinese Name, for example)',
+    REQUIRE_NAME_REASON: true,             // after "I understand — edit", require a REASON (mandatory) before the Name field becomes editable; the reason is put into the name-change email and stored nowhere
+    NAME_REASON_LABEL: 'Reason for this change',
+    NAME_REASON_PLACEHOLDER: 'e.g. spelling correction / Chinese ↔ English name',
     DASHBOARD_GUESTS_MINUS_MEMBERSHIPS: true,  // on manage.roller.app dashboard, display "Guests booked" NET of "New memberships" (guests - new memberships)
     DASHBOARD_HIDE_FINANCIALS: true,           // on manage.roller.app dashboard, remove the "Funds received" + "Revenue" summary tiles and the "Funds received ($)" product-sales column
     // ---- WATCHDOG: silent health telemetry across all deployments ----
@@ -2497,7 +2500,13 @@
       'input.rcz-namelock{background:#f0f1f2 !important;color:#5b636d !important;cursor:default !important;padding-right:56px !important;}',
       '.rcz-namelock-wrap{position:relative !important;}',
       '.rcz-nameedit{position:absolute !important;right:14px !important;top:50% !important;transform:translateY(-50%) !important;z-index:5 !important;color:#2f3540 !important;font:600 14px Roboto,Arial,sans-serif !important;cursor:pointer !important;}',
-      '.rcz-nameedit:hover{text-decoration:underline !important;}'
+      '.rcz-nameedit:hover{text-decoration:underline !important;}',
+      // Mandatory "Reason for this change" box, shown just below the Name field once Edit is acknowledged.
+      '.rcz-reasonbox{display:block !important;margin:8px 0 4px !important;padding:11px 13px 12px !important;background:#fff7f6 !important;border:1px solid #f2c9c5 !important;border-left:3px solid #e5231b !important;border-radius:9px !important;}',
+      '.rcz-reasonbox__lbl{display:block !important;font:700 12px/1.2 Roboto,Arial,sans-serif !important;color:#b3241c !important;letter-spacing:.01em !important;margin:0 0 7px !important;}',
+      '.rcz-reasonbox__req{font-weight:700 !important;color:#e5231b !important;}',
+      '.rcz-reasonbox__inp{width:100% !important;box-sizing:border-box !important;padding:9px 11px !important;border:1.5px solid #d7b3af !important;border-radius:7px !important;background:#fff !important;color:#1f2933 !important;font:400 14px/1.3 Roboto,Arial,sans-serif !important;outline:none !important;}',
+      '.rcz-reasonbox__inp:focus{border-color:#e5231b !important;box-shadow:0 0 0 3px rgba(229,35,27,.14) !important;}'
     );
     if (CFG.LABEL_REDEEM_NOPHOTO) rules.push(
       // Warn on the grey no-photo placeholder in the Redeem-membership dialog. Scoped to that dialog, and the
@@ -2730,34 +2739,109 @@
   // page load (the unlock lasts only for that editing session). Re-applied on render in case Angular re-renders
   // the input. Graceful: if ROLLER renames the input id, the field simply stays natively editable (unprotected),
   // never broken.
+  // Single decision point for the Name-field lock. A field is in one of three states, driven by the
+  // data-rcz-reasonflow marker (set only after "I understand — edit" is acknowledged, and lost on a fresh element
+  // -> re-locks on navigation) and the in-memory reason text (state.nameReason[id], never persisted):
+  //   1) LOCKED (default)          — read-only, grey, inline "Edit".
+  //   2) ACKNOWLEDGED, no reason   — reason box shown; Name still read-only (mandatory: no reason -> no edit).
+  //   3) ACKNOWLEDGED, has reason  — Name editable; audit armed (the reason rides along in the email).
   function lockNameField() {
     if (!CFG.LOCK_MEMBER_NAME) return;
+    if (!state.nameReason) state.nameReason = {};
     document.querySelectorAll('input[id^="booking-detail-name-"]').forEach(function (inp) {
-      if (inp.getAttribute('data-rcz-unlocked') === '1') return;   // staff chose to edit this session -> leave editable
+      var id = inp.id, wrap = inp.closest('.mat-mdc-text-field-wrapper') || inp.parentElement;
+      if (CFG.REQUIRE_NAME_REASON && inp.getAttribute('data-rcz-reasonflow') === '1') {
+        // ACKNOWLEDGED (reason required): show the reason box first; Name editable only once a reason is typed.
+        if (wrap) { var ed = wrap.querySelector('.rcz-nameedit'); if (ed) ed.remove(); }
+        ensureReasonBox(inp, id);
+        applyNameEditable(inp, id);
+        return;
+      }
+      if (!CFG.REQUIRE_NAME_REASON && inp.getAttribute('data-rcz-unlocked') === '1') return; // legacy: unlocked, leave editable
+      // LOCKED (default): read-only + grey + inline "Edit"; drop any leftover reason box + reason state.
+      clrReasonBox(inp); if (state.nameReason[id] != null) delete state.nameReason[id];
+      inp.removeAttribute('data-rcz-unlocked');
       if (!inp.readOnly) inp.readOnly = true;
       if (!inp.classList.contains('rcz-namelock')) inp.classList.add('rcz-namelock');
-      var wrap = inp.closest('.mat-mdc-text-field-wrapper') || inp.parentElement;
       if (wrap) {
         if (!wrap.classList.contains('rcz-namelock-wrap')) wrap.classList.add('rcz-namelock-wrap');
         if (!wrap.querySelector('.rcz-nameedit')) {
           var e = document.createElement('span'); e.className = 'rcz-nameedit'; e.textContent = CFG.NAME_EDIT_LABEL || 'Edit';
-          e.setAttribute('data-rcz-nameedit', inp.id);
+          e.setAttribute('data-rcz-nameedit', id);
           wrap.appendChild(e);
         }
       }
     });
   }
-  function unlockNameField(id) {
+  // Name field editable ONLY when a reason has been entered; toggled live as staff type the reason.
+  function applyNameEditable(inp, id) {
+    var wrap = inp.closest('.mat-mdc-text-field-wrapper');
+    var has = (((state.nameReason || {})[id]) || '').trim().length > 0;
+    if (has) {
+      if (inp.readOnly) inp.readOnly = false;
+      inp.classList.remove('rcz-namelock'); inp.setAttribute('data-rcz-unlocked', '1');
+      if (wrap) wrap.classList.remove('rcz-namelock-wrap');
+      if (CFG.AUDIT_NAME_EDITS) armNameAudit(inp);
+    } else {
+      if (!inp.readOnly) inp.readOnly = true;
+      if (!inp.classList.contains('rcz-namelock')) inp.classList.add('rcz-namelock');
+      inp.removeAttribute('data-rcz-unlocked');
+      if (wrap && !wrap.classList.contains('rcz-namelock-wrap')) wrap.classList.add('rcz-namelock-wrap');
+    }
+  }
+  // The mandatory "Reason for this change" box, injected as a sibling just below the Name field. Its value lives
+  // only in state.nameReason[id] (never written to ROLLER / storage) and is repopulated if Angular re-renders.
+  function ensureReasonBox(inp, id) {
+    var wrap = inp.closest('.mat-mdc-text-field-wrapper') || inp.parentElement;
+    if (!wrap) return;
+    var box = wrap.nextElementSibling;
+    if (!(box && box.classList && box.classList.contains('rcz-reasonbox') && box.getAttribute('data-rcz-reasonfor') === id)) {
+      box = document.createElement('div'); box.className = 'rcz-reasonbox'; box.setAttribute('data-rcz-reasonfor', id);
+      var lbl = document.createElement('label'); lbl.className = 'rcz-reasonbox__lbl';
+      lbl.innerHTML = esc(CFG.NAME_REASON_LABEL || 'Reason for this change') + ' <span class="rcz-reasonbox__req">(required)</span>';
+      var ri = document.createElement('input'); ri.type = 'text'; ri.className = 'rcz-reasonbox__inp';
+      ri.setAttribute('placeholder', CFG.NAME_REASON_PLACEHOLDER || '');
+      box.appendChild(lbl); box.appendChild(ri);
+      wrap.insertAdjacentElement('afterend', box);
+      ri.addEventListener('input', function () {
+        if (!state.nameReason) state.nameReason = {};
+        state.nameReason[id] = ri.value;
+        var ni = document.getElementById(id); if (ni) applyNameEditable(ni, id);
+      });
+    }
+    var cur = box.querySelector('.rcz-reasonbox__inp');
+    if (cur && cur.value !== (((state.nameReason || {})[id]) || '')) cur.value = ((state.nameReason || {})[id]) || '';
+  }
+  function clrReasonBox(inp) {
+    var wrap = inp.closest ? inp.closest('.mat-mdc-text-field-wrapper') : null;
+    var box = wrap && wrap.nextElementSibling;
+    if (box && box.classList && box.classList.contains('rcz-reasonbox')) box.remove();
+  }
+  // "I understand — edit" acknowledged -> enter the reason flow (reason box first, Name still locked). With the
+  // reason requirement off, this unlocks the Name field directly (legacy behaviour).
+  function beginNameEdit(id) {
     var inp = document.getElementById(id); if (!inp) return;
+    if (!state.nameReason) state.nameReason = {};
+    if (CFG.REQUIRE_NAME_REASON) {
+      inp.setAttribute('data-rcz-reasonflow', '1');
+      state.nameReason[id] = '';                 // start blank -> Name stays locked until a reason is typed
+      lockNameField();                           // re-evaluate: show reason box, keep Name locked
+      var wrap = inp.closest('.mat-mdc-text-field-wrapper');
+      var box = wrap && wrap.nextElementSibling;
+      var ri = box && box.querySelector ? box.querySelector('.rcz-reasonbox__inp') : null;
+      if (ri) try { ri.focus(); } catch (e) {}   // reason box takes focus first
+      return;
+    }
     inp.setAttribute('data-rcz-unlocked', '1');
     inp.readOnly = false; inp.classList.remove('rcz-namelock');
-    var wrap = inp.closest('.mat-mdc-text-field-wrapper');
-    if (wrap) { var e = wrap.querySelector('.rcz-nameedit'); if (e) e.remove(); wrap.classList.remove('rcz-namelock-wrap'); }
+    var w = inp.closest('.mat-mdc-text-field-wrapper');
+    if (w) { var e = w.querySelector('.rcz-nameedit'); if (e) e.remove(); w.classList.remove('rcz-namelock-wrap'); }
     if (CFG.AUDIT_NAME_EDITS) armNameAudit(inp);
     try { inp.focus(); inp.select(); } catch (e) {}
   }
   // AUDIT: once a name field is unlocked for editing, capture its baseline value and email the admin if the
   // committed value actually differs (a real name change). Fires on blur/change; de-duped per committed value.
+  // The mandatory reason (state.nameReason[id]) rides along in the email; it is never stored anywhere else.
   function armNameAudit(inp) {
     if (!inp || inp.getAttribute('data-rcz-audit') === '1') return;
     inp.setAttribute('data-rcz-audit', '1');
@@ -2769,7 +2853,8 @@
       if (now.trim() === orig.trim()) return;                    // unchanged or reverted -> nothing to report
       if (inp.getAttribute('data-rcz-auditsent') === now) return; // already reported this exact value
       inp.setAttribute('data-rcz-auditsent', now);
-      rczAuditSend({ event: 'Member name changed', field: inp.id, oldName: orig, newName: now, path: location.pathname });
+      var reason = (((state.nameReason || {})[inp.id]) || '').trim();
+      rczAuditSend({ event: 'Member name changed', field: inp.id, oldName: orig, newName: now, reason: reason, path: location.pathname });
     };
     inp.addEventListener('blur', commit);
     inp.addEventListener('change', commit);
@@ -2840,7 +2925,7 @@
       '</div></div>';
     document.body.appendChild(scrim);
     var c = scrim.querySelector('.rcz-nw-cancel'); if (c) c.addEventListener('click', function () { scrim.remove(); });
-    var o = scrim.querySelector('.rcz-nw-ok'); if (o) o.addEventListener('click', function () { scrim.remove(); unlockNameField(id); });
+    var o = scrim.querySelector('.rcz-nw-ok'); if (o) o.addEventListener('click', function () { scrim.remove(); beginNameEdit(id); });
     scrim.addEventListener('click', function (ev) { if (ev.target === scrim) scrim.remove(); });
   }
 
