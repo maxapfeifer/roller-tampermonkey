@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Venue — ROLLER Check-in Cards + Member Photos
 // @namespace    venue.roller.checkin-cards
-// @version      5.171
+// @version      5.172
 // @description  Reformats the ROLLER POS booking check-in list into full-frame photo cards, surfaces member photos on load (no Verify click), alerts when a member has no photo, handles family memberships (best-effort photos + add-name prompt) and close/similar name matches.
 // @match        https://pos.roller.app/*
 // @match        https://*.roller.app/*
@@ -66,6 +66,8 @@
     // old + new NAME — that is the point of the audit. They go only to the admin inbox behind AUDIT_URL.
     AUDIT_NAME_EDITS: true,     // email the admin when a member's Name is actually changed on the Guest tab (after Edit -> unlock -> value changed)
     AUDIT_PASS_DUP:  true,      // email the admin when staff use the "PASS DUPLICATE" override to check in past a family name-duplicate warning
+    AUDIT_PHOTO_OVERRIDE: true, // email the admin when an EXISTING member photo is replaced (overridden), with the old + new photo attached. A first photo being ADDED is not reported.
+    PHOTO_MAX_PX:    560,        // resize the captured new photo to this max dimension before emailing (keeps the payload small/reliable)
     AUDIT_URL: '',             // Google Apps Script webhook for audit emails; '' = reuse WATCHDOG_URL. Requires the Apps Script to handle {kind:'audit'} payloads.
     // Family name-DUPLICATE nudge (soft alternative to the hard cross-account mismatch): shown when a FAMILY
     // membership's holder name is stamped on 2+ tickets in the booking. Frosted box (add-photo format) with a
@@ -1767,6 +1769,7 @@
       adjustGuestsBooked();    // manage.roller.app dashboard: show Guests booked net of New memberships
       ensureFileUploadBtn();   // "Choose a photo file" beside ROLLER's camera capture (runs on the member/item detail pages too, so it's before the activeRoute gate)
       lockNameField();         // Guest tab: lock the member Name field behind an Edit + warning (item-detail page, before the gate)
+      trackPhotoOverride();     // arm/disarm the "photo overridden" audit while on a capture screen with an existing photo
       tagSearchRows();         // badge search-result rows MEMBERSHIP vs TICKETS (search list isn't the activeRoute, so before the gate)
       // On a membership PROFILE detail (member profile via search, or a membership item detail) tag <body> so
       // the CSS hides ROLLER's header check-in tick. Only membership headers (product name contains
@@ -2713,6 +2716,64 @@
     img.onerror = function () { URL.revokeObjectURL(url); };
     img.src = url;
   }
+
+  // ---- Photo OVERRIDE audit: email admin (old + new photo attached) when an EXISTING photo is replaced --------
+  // The capture component shows an "edit" (replace) button only when a photo is ALREADY on file, so its presence
+  // marks an OVERRIDE vs a first-time ADD. We arm on that screen (grabbing the current/old photo URL), grab the
+  // NEW frame from the <video> at Capture (works for both the live-camera and file-upload paths — both feed the
+  // same video), and email on Done. The new photo is sent as bytes; the old photo as a URL the Apps Script fetches.
+  function rczPhotoUrlOf(cap) {
+    try {
+      var img = cap.querySelector('img'); if (img && /^https?:/.test(img.src || '')) return img.src;
+      var els = cap.querySelectorAll('*');
+      for (var i = 0; i < els.length; i++) { var bg = getComputedStyle(els[i]).backgroundImage || ''; var m = bg.match(/url\(["']?(https?:[^"')]+)/); if (m) return m[1]; }
+    } catch (e) {}
+    return '';
+  }
+  function rczGrabVideoFrame() {
+    try {
+      var v = document.querySelector('.image-capture video') || document.querySelector('video');
+      if (!v || !v.videoWidth) return '';
+      var max = CFG.PHOTO_MAX_PX || 560, sc = Math.min(1, max / Math.max(v.videoWidth, v.videoHeight));
+      var c = document.createElement('canvas'); c.width = Math.round(v.videoWidth * sc); c.height = Math.round(v.videoHeight * sc);
+      c.getContext('2d').drawImage(v, 0, 0, c.width, c.height);
+      return c.toDataURL('image/jpeg', 0.82);   // tainted stream would throw -> caught below
+    } catch (e) { return ''; }
+  }
+  function rczMemberNameOnPage() {
+    try { var n = document.querySelector('input[id^="booking-detail-name-"]'); if (n && n.value) return n.value.trim();
+      var h = document.querySelector('.bip-summary-header, .booking-search-result__name'); return h ? (h.textContent || '').trim().slice(0, 60) : ''; } catch (e) { return ''; }
+  }
+  // Arm/disarm as staff move on/off a capture screen that has an EXISTING photo. Called from render().
+  function trackPhotoOverride() {
+    if (!CFG.AUDIT_PHOTO_OVERRIDE) return;
+    var cap = document.querySelector('.image-capture');
+    if (!cap) { window.__rczPhotoArm = null; return; }              // left the capture screen -> disarm
+    var hasExisting = !!cap.querySelector('.image-capture__edit-button');
+    if (hasExisting && !window.__rczPhotoArm) {
+      var oldUrl = rczPhotoUrlOf(cap);
+      if (oldUrl) window.__rczPhotoArm = { oldUrl: oldUrl, path: location.pathname, member: rczMemberNameOnPage(), newB64: '' };
+    }
+  }
+  function sendPhotoOverrideAudit() {
+    var a = window.__rczPhotoArm;
+    if (!CFG.AUDIT_PHOTO_OVERRIDE || !a || !a.oldUrl || !a.newB64) return;
+    rczAuditSend({ event: 'Member photo overridden', member: a.member || '', oldPhotoUrl: a.oldUrl, newPhotoB64: a.newB64, path: a.path });
+    window.__rczPhotoArm = null;
+  }
+  // One document-level click watch: grab the new frame on Capture, send on Done. Observe only — never preventDefault.
+  function installPhotoOverrideWatch() {
+    if (window.__rczPhotoWatch) return; window.__rczPhotoWatch = true;
+    document.addEventListener('click', function (ev) {
+      if (!CFG.AUDIT_PHOTO_OVERRIDE || !window.__rczPhotoArm) return;
+      var b = ev.target && ev.target.closest ? ev.target.closest('button') : null; if (!b) return;
+      var t = (b.textContent || '').trim().toLowerCase();
+      if (t === 'capture') { var f = rczGrabVideoFrame(); if (f) window.__rczPhotoArm.newB64 = f; }
+      else if (t === 'done' || t === 'save' || b.id === 'bip-guest-details-save-changes' || (b.closest && b.closest('#bip-guest-details-save-changes'))) {
+        setTimeout(sendPhotoOverrideAudit, 0);   // commit -> send (let ROLLER's own handler run first). Only fires if a new frame was grabbed.
+      }
+    }, true);
+  }
   function addFileBtn(cap) {
     if (cap.parentNode && cap.parentNode.querySelector(':scope > .rcz-filewrap')) return;   // already added next to this capture
     var wrap = document.createElement('div'); wrap.className = 'rcz-filewrap';
@@ -2891,10 +2952,15 @@
       payload.date = new Date().toISOString();
     } catch (e) {}
     var body; try { body = JSON.stringify(payload); } catch (e) { return; }
-    var sent = false;
-    try { sent = navigator.sendBeacon(url, body); } catch (e) {}
-    if (!sent) { try { fetch(url, { method: 'POST', mode: 'no-cors', keepalive: true, body: body }); } catch (e) {} }
-    try { console.log('[rcz] audit sent:', payload.event, '"' + payload.oldName + '" -> "' + payload.newName + '"'); } catch (e) {}
+    // sendBeacon and fetch-keepalive are both capped at ~64KB, so a payload carrying a photo (base64) must go via a
+    // normal fetch (no keepalive). Staff stay on the page after saving a photo, so the request completes fine.
+    if (body.length > 60000) { try { fetch(url, { method: 'POST', mode: 'no-cors', body: body }); } catch (e) {} }
+    else {
+      var sent = false;
+      try { sent = navigator.sendBeacon(url, body); } catch (e) {}
+      if (!sent) { try { fetch(url, { method: 'POST', mode: 'no-cors', keepalive: true, body: body }); } catch (e) {} }
+    }
+    try { console.log('[rcz] audit sent:', payload.event); } catch (e) {}
   }
   // Staff used the "PASS DUPLICATE" override to check in past a family name-duplicate warning -> email the admin.
   // Reuses the audit pipeline; oldName/newName carry the ticket vs membership name so the current Apps Script prints
@@ -3191,6 +3257,7 @@
     injectGlobalStyle();
     injectStyle();
     if (CFG.PHOTO_FILE_UPLOAD) installCameraOverride();   // patch getUserMedia early (pass-through until a file is armed)
+    if (CFG.AUDIT_PHOTO_OVERRIDE) installPhotoOverrideWatch();  // watch Capture/Done to email old+new photo on an override
     installBadgeLinkNav();
     installUndoCheckIn();
     render();
