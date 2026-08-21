@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Venue — ROLLER Check-in Cards + Member Photos
 // @namespace    venue.roller.checkin-cards
-// @version      5.170
+// @version      5.171
 // @description  Reformats the ROLLER POS booking check-in list into full-frame photo cards, surfaces member photos on load (no Verify click), alerts when a member has no photo, handles family memberships (best-effort photos + add-name prompt) and close/similar name matches.
 // @match        https://pos.roller.app/*
 // @match        https://*.roller.app/*
@@ -2883,6 +2883,8 @@
       payload.kind = 'audit';
       payload.version = SCRIPT_VERSION;
       payload.machine = rczMachineId();
+      // Send the FULL clickable URL (admin asked), not just the path tail — the click happened on this page.
+      if (payload.path && payload.path.charAt(0) === '/') payload.path = location.origin + payload.path;
       if (!payload.location) payload.location = rczLocation();
       if (!payload.venueId) payload.venueId = rczVenueId();
       if (!payload.operator) payload.operator = rczOperator();
