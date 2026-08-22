@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Venue — ROLLER Check-in Cards + Member Photos
 // @namespace    venue.roller.checkin-cards
-// @version      5.172
+// @version      5.173
 // @description  Reformats the ROLLER POS booking check-in list into full-frame photo cards, surfaces member photos on load (no Verify click), alerts when a member has no photo, handles family memberships (best-effort photos + add-name prompt) and close/similar name matches.
 // @match        https://pos.roller.app/*
 // @match        https://*.roller.app/*
@@ -76,6 +76,7 @@
     FAMILY_DUP_NUDGE: true,     // ON: family name-duplicate shows the soft nudge + PASS DUPLICATE override. OFF: falls back to the hard cross-account mismatch lock.
     DUP_WARN_HD:   'FRAUD WARNING: NAME',
     DUP_WARN_SUB:  'FAMILY NAME DUPLICATE',
+    DUP_WARN_SUB_CROSS: 'FAMILY NAME MISMATCH',   // sub-line when it's a distinct-name family cross (not a duplicated booker name)
     DUP_WARN_LINK: 'PASS DUPLICATE',
     // Venue-id -> friendly name for the audit "Location". Sourced automatically from ROLLER's doorlist "Current-Venue"
     // header (captured per till, no setup). 5311 = Sandringham confirmed; the other three ids fill in the first time a
@@ -614,13 +615,19 @@
           // ticket name != membership name -> name-mismatch. Covers both a single membership AND a
           // family slot that IS individually named but this ticket isn't that person (someone using
           // another member's pass, e.g. Chris checking in on Michelle's slot).
-          // FAMILY DUPLICATE (softer case): a FAMILY membership where the booker's name was stamped on 2+ tickets
-          // (so a child's ticket carries the parent's name and mismatches the child's own pass). That's routine,
-          // not fraud, so show the "FAMILY NAME DUPLICATE" nudge with a one-tap PASS DUPLICATE override rather
-          // than the hard cross-account mismatch lock. A genuine unrelated pass is a single membership (not family)
-          // or a unique wrong name, and stays a hard mismatch.
-          var famDup = CFG.FAMILY_DUP_NUDGE && d.family && fnT && ticketNameCount[fnT] >= 2;
-          next[cardId] = { member: true, mismatch: !famDup, familyDup: famDup, pending: false, photo: null, tier: tier, memberName: proper(fnM), ticketName: proper(fnT) };
+          // FAMILY, not fraud (softer case) -> the "FRAUD WARNING: NAME" nudge with a one-tap PASS DUPLICATE
+          // override, instead of the hard cross-account mismatch lock. Two family shapes qualify:
+          //   * DUPLICATE — the booker's name is stamped on 2+ tickets, so a child's ticket carries the parent's
+          //     name and mismatches the child's own pass (ticketNameCount >= 2).
+          //   * CROSS — every ticket has a distinct real member name, but amount/age pairing links each ticket to
+          //     a DIFFERENT family member's same-account pass (both people ARE members here, so not an interloper).
+          // A genuine unrelated pass is a single membership (not family), or a ticket-holder who is NOT a member on
+          // this booking -> stays a hard mismatch.
+          var holderIsMemberHere = discs.some(function (x) { return x.name && sameName(x.name, fnT); });
+          var isDup   = fnT && ticketNameCount[fnT] >= 2;
+          var famDup  = CFG.FAMILY_DUP_NUDGE && d.family && (isDup || holderIsMemberHere);
+          var dupCross = famDup && !isDup;   // distinct-name family cross (vs a duplicated booker name)
+          next[cardId] = { member: true, mismatch: !famDup, familyDup: famDup, dupCross: dupCross, pending: false, photo: null, tier: tier, memberName: proper(fnM), ticketName: proper(fnT) };
           toFetch.push({ cardId: cardId, r: d.r, b: d.b }); // pull the member's photo to show behind the warning
         }
         // Full membership name (same source ROLLER prints on the blue discount link) — used to look up
@@ -1524,7 +1531,7 @@
     var hasPhoto = !!w.querySelector('img.rcz-photo');
     if (info.member === false && !info.misaligned) return null;  // casual guests: no top status band at all
     if (info.misaligned || info.paidMember)        return { nm: 'Mismatched (assignment error only)', nmW: true, ph: hasPhoto ? 'Showing' : 'No Match Required', phW: false };
-    if (info.familyDup)                            return { nm: 'Family name duplicate', nmW: true, ph: hasPhoto ? 'Showing' : 'Required Today', phW: !hasPhoto };
+    if (info.familyDup)                            return { nm: info.dupCross ? 'Family name mismatch' : 'Family name duplicate', nmW: true, ph: hasPhoto ? 'Showing' : 'Required Today', phW: !hasPhoto };
     if (info.mismatch)                             return { nm: 'Not Matching', nmW: true, ph: hasPhoto ? 'Showing' : 'Required Today (Add)', phW: !hasPhoto };
     if (info.family)                               return { nm: 'Names Required', nmW: true, ph: hasPhoto ? 'Showing' : 'Required Today', phW: !hasPhoto };
     if (info.closematch)                           return { nm: 'Not Matching', nmW: true, ph: hasPhoto ? 'Showing' : 'Required Today', phW: !hasPhoto };
@@ -1604,12 +1611,13 @@
   // FAMILY NAME-DUPLICATE box — same frosted format as the ADD PHOTO prompt (plain .rcz-actreq, NO red veil).
   // Three lines: big red heading, small red sub, one blue "PASS DUPLICATE" override link. The link snoozes the
   // name gate for 2 min (unlocks the shield) and emails the admin — handled in the click listener (act=passdup).
-  function addFamilyDupBox(w, cardId) {
+  function addFamilyDupBox(w, cardId, isCross) {
     var el = w.querySelector('.rcz-actreq');
     if (!el) { el = document.createElement('div'); el.className = 'rcz-actreq'; w.appendChild(el); }
     if (el.className !== 'rcz-actreq') el.className = 'rcz-actreq';
+    var sub = isCross ? (CFG.DUP_WARN_SUB_CROSS || CFG.DUP_WARN_SUB) : CFG.DUP_WARN_SUB;
     var html = '<div class="rcz-actreq__hd">' + esc(CFG.DUP_WARN_HD) + '</div>' +
-               '<div class="rcz-actreq__sub">' + esc(CFG.DUP_WARN_SUB) + '</div>' +
+               '<div class="rcz-actreq__sub">' + esc(sub) + '</div>' +
                '<div class="rcz-actreq__links"><a href="#" data-rcz-unlock="' + esc(cardId) + '" data-rcz-act="passdup">' + esc(CFG.DUP_WARN_LINK) + '</a></div>';
     if (el.getAttribute('data-h') !== html) { el.innerHTML = html; el.setAttribute('data-h', html); }
   }
@@ -1862,7 +1870,7 @@
             if (img.getAttribute('src') !== fdurl) img.setAttribute('src', fdurl);
           } else if (img) { img.remove(); }
           clrMismatch(w); clrAlert(w); clrCasual(w); clrVisiting(w); clrNote(w);
-          if (snoozedName(cardId)) clrActionReq(w); else addFamilyDupBox(w, cardId);   // hidden during the 2-min override
+          if (snoozedName(cardId)) clrActionReq(w); else addFamilyDupBox(w, cardId, info.dupCross);   // hidden during the 2-min override
           if (info.tier) addBadge(w, info.tier, memHref(info, cardId), info.visiting); else clrBadge(w);
         } else if (info && info.mismatch) {
           // member ticket whose name doesn't match its membership -> name-mismatch alert (dynamic note).
