@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Venue — ROLLER Check-in Cards + Member Photos
 // @namespace    venue.roller.checkin-cards
-// @version      5.173
+// @version      5.174
 // @description  Reformats the ROLLER POS booking check-in list into full-frame photo cards, surfaces member photos on load (no Verify click), alerts when a member has no photo, handles family memberships (best-effort photos + add-name prompt) and close/similar name matches.
 // @match        https://pos.roller.app/*
 // @match        https://*.roller.app/*
@@ -933,10 +933,10 @@
       'app-bip-summary:not(.rcz-skip) .summary__wrapper{position:relative !important;display:block !important;width:100% !important;aspect-ratio:1/1 !important;height:auto !important;box-sizing:border-box !important;margin:0 !important;padding:0 !important;border:none !important;border-radius:' + CFG.CARD_RADIUS_PX + 'px !important;overflow:hidden !important;box-shadow:0 1px 3px rgba(0,0,0,.18) !important;background:#eceef0 !important;}',
 
       /* avatar/photo fills the whole card */
-      'app-bip-summary:not(.rcz-skip) .summary__wrapper app-icon-button.align-top:has(button[id^="booking-details-button"]){position:absolute !important;inset:0 !important;top:0 !important;left:0 !important;transform:none !important;width:100% !important;height:100% !important;margin:0 !important;z-index:1 !important;}',
+      'app-bip-summary:not(.rcz-skip) .summary__wrapper rds-icon-button.align-top:has(button[id^="booking-details-button"]){position:absolute !important;inset:0 !important;top:0 !important;left:0 !important;transform:none !important;width:100% !important;height:100% !important;margin:0 !important;z-index:1 !important;}',
       'app-bip-summary:not(.rcz-skip) button[id^="booking-details-button"]{width:100% !important;height:100% !important;min-width:0 !important;border-radius:0 !important;border:none !important;background:#eceef0 !important;overflow:hidden !important;}',
       'app-bip-summary:not(.rcz-skip) button[id^="booking-details-button"] img.rcz-photo{width:100% !important;height:100% !important;object-fit:cover !important;border-radius:0 !important;display:block !important;}',
-      'app-bip-summary:not(.rcz-skip) button[id^="booking-details-button"] mat-icon{font-size:' + CFG.PLACEHOLDER_ICON_PX + 'px !important;width:' + CFG.PLACEHOLDER_ICON_PX + 'px !important;height:' + CFG.PLACEHOLDER_ICON_PX + 'px !important;line-height:' + CFG.PLACEHOLDER_ICON_PX + 'px !important;color:#9aa2ac !important;}',
+      'app-bip-summary:not(.rcz-skip) button[id^="booking-details-button"] span.rds-icon{font-size:' + CFG.PLACEHOLDER_ICON_PX + 'px !important;width:' + CFG.PLACEHOLDER_ICON_PX + 'px !important;height:' + CFG.PLACEHOLDER_ICON_PX + 'px !important;line-height:' + CFG.PLACEHOLDER_ICON_PX + 'px !important;color:#9aa2ac !important;}',
 
       /* overlays ON TOP of the photo */
       /* select checkbox hidden in the new design */
@@ -960,10 +960,10 @@
       /* bottom in to ~32px (tight, but enough that ROLLER\'s verify banner clears the row) */
       '.panel__header:has(.bip-list-header){padding-top:6px !important;padding-bottom:32px !important;}',
       'app-bip-summary:not(.rcz-skip) .summary__wrapper .summary-detail-time{display:none !important;}',
-      'app-bip-summary:not(.rcz-skip) .summary__wrapper app-icon-button.align-top:has(button[id^="check-in-button"]){position:absolute !important;right:18px !important;bottom:12px !important;margin:0 !important;z-index:6 !important;}',
+      'app-bip-summary:not(.rcz-skip) .summary__wrapper rds-checkbox-button.align-top:has(button[id^="check-in-button"]){position:absolute !important;right:18px !important;bottom:12px !important;margin:0 !important;z-index:6 !important;}',
       // Membership tiles under "MEMBERSHIP PROFILES ONLY" (tagged .rcz-nocheckin by tagProfileOnlyCards) —
       // hide the check-in tick entirely so a profile can't be checked in there. Dated-section tiles keep it.
-      'app-bip-summary.rcz-nocheckin app-icon-button:has(button[id^="check-in-button"]){display:none !important;}',
+      'app-bip-summary.rcz-nocheckin rds-checkbox-button:has(button[id^="check-in-button"]){display:none !important;}',
       'app-bip-summary.rcz-nocheckin button[id^="check-in-button"]{display:none !important;}',
       // When a membership profile is selected, hide ROLLER's blue bulk "check (N)" button (the filled/unelevated
       // one in the header actions) so profiles can't be bulk-checked-in. The "..." more-actions icon-button stays.
@@ -977,25 +977,25 @@
       '.rcz-sectionpill .rcz-pill-sub{display:block;font-size:14px !important;font-weight:400 !important;line-height:1.25 !important;text-transform:none !important;opacity:.9;margin-top:1px;}',
       /* check-in button: 66px square sized to the name-label height; glyph scaled to match. Full box
          stays clickable; the shield (when on) is drawn as ::before so the whole square still taps. */
-      'app-bip-summary:not(.rcz-skip) .summary__wrapper app-icon-button.align-top:has(button[id^="check-in-button"]) button{width:48px !important;height:48px !important;min-width:48px !important;min-height:48px !important;padding:0 !important;position:relative !important;overflow:visible !important;' + (CFG.SHOW_SHIELD ? 'background:transparent !important;border:none !important;box-shadow:none !important;border-radius:0 !important;' : 'border-radius:12px !important;box-shadow:0 2px 8px rgba(0,0,0,.35) !important;') + '}',
-      'app-bip-summary:not(.rcz-skip) .summary__wrapper button[id^="check-in-button"] mat-icon{font-size:26px !important;width:26px !important;height:26px !important;line-height:26px !important;position:relative !important;z-index:1 !important;}',
+      'app-bip-summary:not(.rcz-skip) .summary__wrapper rds-checkbox-button.align-top:has(button[id^="check-in-button"]) button{width:48px !important;height:48px !important;min-width:48px !important;min-height:48px !important;padding:0 !important;position:relative !important;overflow:visible !important;' + (CFG.SHOW_SHIELD ? 'background:transparent !important;border:none !important;box-shadow:none !important;border-radius:0 !important;' : 'border-radius:12px !important;box-shadow:0 2px 8px rgba(0,0,0,.35) !important;') + '}',
+      'app-bip-summary:not(.rcz-skip) .summary__wrapper button[id^="check-in-button"] span.rds-icon{font-size:26px !important;width:26px !important;height:26px !important;line-height:26px !important;position:relative !important;z-index:1 !important;}',
       /* SHIELD — reacts to ROLLER\'s own state class: theme--secondary = NOT checked in (amber "I.D."),
          theme--success = checked in (green tick). Pure CSS, so it flips the instant staff check someone in. */
       (CFG.SHOW_SHIELD ? 'app-bip-summary:not(.rcz-skip) .summary__wrapper button[id^="check-in-button"]::before{content:"" !important;position:absolute !important;inset:0 !important;z-index:0 !important;clip-path:path("M24 2 L44 9 L44 24 C44 36 35 43 24 47 C13 43 4 36 4 24 L4 9 Z") !important;filter:drop-shadow(0 2px 3px rgba(0,0,0,.4)) !important;}' : ''),
       (CFG.SHOW_SHIELD ? 'app-bip-summary:not(.rcz-skip) .summary__wrapper button[id^="check-in-button"].theme--secondary::before{background:transparent !important;filter:none !important;}' : ''),
       (CFG.SHOW_SHIELD ? 'app-bip-summary:not(.rcz-skip) .summary__wrapper button[id^="check-in-button"].theme--success::before{background:#16a34a !important;}' : ''),
-      (CFG.SHOW_SHIELD ? 'app-bip-summary:not(.rcz-skip) .summary__wrapper button[id^="check-in-button"].theme--secondary mat-icon{display:none !important;}' : ''),
+      (CFG.SHOW_SHIELD ? 'app-bip-summary:not(.rcz-skip) .summary__wrapper button[id^="check-in-button"].theme--secondary span.rds-icon{display:none !important;}' : ''),
       (CFG.SHOW_SHIELD ? '.rcz-shieldtxt{position:absolute !important;inset:0 !important;z-index:1 !important;display:none;flex-direction:column !important;align-items:center !important;justify-content:center !important;padding-bottom:6px !important;color:#fff !important;pointer-events:none !important;text-align:center !important;}' : ''),
       (CFG.SHOW_SHIELD ? 'app-bip-summary:not(.rcz-skip) button[id^="check-in-button"].theme--secondary .rcz-shieldtxt{display:flex !important;}' : ''),
       (CFG.SHOW_SHIELD ? '.rcz-shieldtxt__tick{display:flex !important;align-items:center !important;justify-content:center !important;}' : ''),
       (CFG.SHOW_SHIELD ? '.rcz-shieldtxt__tick svg{width:46px !important;height:46px !important;margin:0 !important;overflow:visible !important;}' : ''),
-      (CFG.SHOW_SHIELD ? 'app-bip-summary:not(.rcz-skip) .summary__wrapper button[id^="check-in-button"].theme--success mat-icon{color:#fff !important;margin-bottom:6px !important;}' : ''),
+      (CFG.SHOW_SHIELD ? 'app-bip-summary:not(.rcz-skip) .summary__wrapper button[id^="check-in-button"].theme--success span.rds-icon{color:#fff !important;margin-bottom:6px !important;}' : ''),
 
       /* ALERT (member with no photo) — fills the whole card and dominates; icon hidden */
       '.rcz-alert{position:absolute !important;inset:0 !important;display:flex !important;flex-direction:column !important;align-items:center !important;justify-content:center !important;text-align:center !important;color:#e5231b !important;z-index:5 !important;pointer-events:none !important;padding:16px 18px 92px !important;gap:8px !important;}',
       '.rcz-alert__hd{font:900 25px/1.02 Roboto,Arial,sans-serif !important;letter-spacing:.01em !important;}',
       '.rcz-alert__body{font:800 12px/1.28 Roboto,Arial,sans-serif !important;}',
-      'app-bip-summary:not(.rcz-skip) .summary__wrapper.rcz-alert-on button[id^="booking-details-button"] mat-icon{display:none !important;}',
+      'app-bip-summary:not(.rcz-skip) .summary__wrapper.rcz-alert-on button[id^="booking-details-button"] span.rds-icon{display:none !important;}',
       /* CASUAL (non-member) — calm grey, same card-filling layout; icon hidden */
       '.rcz-casual{position:absolute !important;left:16px !important;bottom:12px !important;z-index:6 !important;pointer-events:none !important;}',
       '.rcz-casual__tag{font:700 18px/1.32 Roboto,Arial,sans-serif !important;color:#565d66 !important;}',
@@ -1006,7 +1006,7 @@
       '.rcz-casual__name--none{color:#9aa3af !important;letter-spacing:normal !important;}',
       '.rcz-casual__type{font:700 22px/1.3 Roboto,Arial,sans-serif !important;color:#1f2933 !important;margin-top:6px !important;}',
       '.rcz-casual__sub{font:400 15px/1.3 Roboto,Arial,sans-serif !important;color:#6b7280 !important;margin-top:9px !important;}',
-      'app-bip-summary:not(.rcz-skip) .summary__wrapper.rcz-casual-on button[id^="booking-details-button"] mat-icon{display:none !important;}',
+      'app-bip-summary:not(.rcz-skip) .summary__wrapper.rcz-casual-on button[id^="booking-details-button"] span.rds-icon{display:none !important;}',
       /* age-type icon (#2): centred in the photo square, kept clear of the bottom bar */
       'app-bip-summary:not(.rcz-skip) .summary__wrapper button[id^="booking-details-button"] img.rcz-ageicon{position:absolute !important;top:44% !important;left:50% !important;transform:translate(-50%,-50%) !important;width:auto !important;height:62% !important;max-width:74% !important;object-fit:contain !important;pointer-events:none !important;z-index:2 !important;}',
       /* age-TEXT (#2, replaces the silhouette): ticket type over the name, centred, medium size */
@@ -1021,13 +1021,13 @@
       /* member photo behind the mismatch text -> keep the FACE clearly visible; the warning is only a light
          semi-transparent reminder (a soft white wash + reduced opacity) so staff still see to verify the name */
       '.rcz-mismatch--onphoto{background:rgba(255,255,255,.3) !important;opacity:.72 !important;}',
-      'app-bip-summary:not(.rcz-skip) .summary__wrapper.rcz-mismatch-on button[id^="booking-details-button"] mat-icon{display:none !important;}',
+      'app-bip-summary:not(.rcz-skip) .summary__wrapper.rcz-mismatch-on button[id^="booking-details-button"] span.rds-icon{display:none !important;}',
       /* VISITING (member from another museum, no photo) — red, card-filling; icon hidden */
       '.rcz-visiting{position:absolute !important;inset:0 !important;display:flex !important;flex-direction:column !important;align-items:center !important;justify-content:center !important;text-align:center !important;color:#e5231b !important;z-index:5 !important;pointer-events:none !important;padding:16px 18px 78px !important;gap:10px !important;}',
       '.rcz-visiting__hd{font:900 48px/1 Roboto,Arial,sans-serif !important;letter-spacing:.02em !important;}',
       '.rcz-visiting__body{font:400 18px/1.32 Roboto,Arial,sans-serif !important;}',
       '.rcz-visiting__note{margin-top:2px !important;background:#e5231b !important;color:#fff !important;padding:8px 14px !important;border-radius:9px !important;font:400 15px/1.25 Roboto,Arial,sans-serif !important;letter-spacing:.03em !important;max-width:94% !important;box-shadow:0 2px 8px rgba(0,0,0,.28) !important;}',
-      'app-bip-summary:not(.rcz-skip) .summary__wrapper.rcz-visiting-on button[id^="booking-details-button"] mat-icon{display:none !important;}',
+      'app-bip-summary:not(.rcz-skip) .summary__wrapper.rcz-visiting-on button[id^="booking-details-button"] span.rds-icon{display:none !important;}',
       /* MEMBERSHIP TIER badge — small pill low over the photo */
       /* membership tag, bottom-LEFT: two lines ("Membership" over the tier), dark border. */
       /* min-height 66px so the tag matches the name label + shield heights (Tom\'s "similar heights" mock) */
@@ -1194,7 +1194,7 @@
     var uri = CFG.AGE_ICONS[ageIconKey(type)];
     var im = btn.querySelector('img.rcz-ageicon');
     if (!uri) { if (im) im.remove(); return; }
-    var mi = btn.querySelector('mat-icon'); if (mi) mi.style.display = 'none';
+    var mi = btn.querySelector('span.rds-icon'); if (mi) mi.style.display = 'none';
     if (!im) { im = document.createElement('img'); im.className = 'rcz-ageicon'; im.alt = ''; btn.appendChild(im); }
     if (im.getAttribute('src') !== uri) im.setAttribute('src', uri);
   }
@@ -1215,7 +1215,7 @@
     var _ph = btn.closest && btn.closest('app-bip-summary'); if (_ph) _ph.classList.toggle('rcz-partyguest', party);
     var nm = proper(firstName(name || ''));
     var oi = btn.querySelector('img.rcz-ageicon'); if (oi) oi.remove();   // drop any prior silhouette
-    var mi = btn.querySelector('mat-icon'); if (mi) mi.style.display = 'none';
+    var mi = btn.querySelector('span.rds-icon'); if (mi) mi.style.display = 'none';
     var el = btn.querySelector('.rcz-agetext');
     if (!el) { el = document.createElement('div'); el.className = 'rcz-agetext'; btn.appendChild(el); }
     var html = '<div class="rcz-agetext__ty">' + esc(ty) + '</div>' +
@@ -1717,7 +1717,7 @@
       var roller = btn.querySelector('img:not(.rcz-photo)');
       var src = roller ? roller.getAttribute('src') : null;
       if (roller) roller.style.display = 'none';
-      var icon = btn.querySelector('mat-icon'); if (icon) icon.style.display = 'none';
+      var icon = btn.querySelector('span.rds-icon'); if (icon) icon.style.display = 'none';
       if (src) {
         var img = btn.querySelector('img.rcz-photo');
         if (!img) { img = document.createElement('img'); img.className = 'rcz-photo'; img.alt = ''; btn.appendChild(img); }
@@ -1792,7 +1792,7 @@
         document.querySelectorAll('.rcz-alert, .rcz-casual, .rcz-mismatch, .rcz-visiting, .rcz-badge, .rcz-note, .rcz-bday, .rcz-meaning, .rcz-status, .rcz-actreq, .rcz-nameact, .rcz-botbar, .rcz-mem-info, .rcz-mem-name, .rcz-mmnames, .rcz-mmveil, .rcz-memstrip, img.rcz-photo').forEach(function (e) { e.remove(); });
         document.querySelectorAll('.rcz-alert-on, .rcz-casual-on, .rcz-mismatch-on, .rcz-visiting-on, .rcz-mmnames-on, .rcz-locked').forEach(function (w) { w.classList.remove('rcz-alert-on', 'rcz-casual-on', 'rcz-mismatch-on', 'rcz-visiting-on', 'rcz-mmnames-on', 'rcz-locked'); });
         document.querySelectorAll('app-bip-summary.rcz-mem, app-bip-summary.rcz-skip').forEach(function (h) { h.classList.remove('rcz-mem', 'rcz-skip'); });
-        document.querySelectorAll('app-bip-summary:not(.rcz-skip) button[id^="booking-details-button-"] mat-icon').forEach(function (ic) { ic.style.display = ''; });
+        document.querySelectorAll('app-bip-summary:not(.rcz-skip) button[id^="booking-details-button-"] span.rds-icon').forEach(function (ic) { ic.style.display = ''; });
         // A VISITING (other-museum) member's photo does NOT sync back to their home venue, so staff must ALWAYS
         // be reminded to send it to admin — not only when they used our ADD PHOTO link. Arm the handoff whenever
         // they're on such a member's photo tab by ANY route (ADD PHOTO, the "Choose a photo file" button, or
@@ -1830,7 +1830,7 @@
         // once staff have named this family slot (live pills), drop the "Add individual names" ask for it
         if (info && info.family && slotNamed(cardId)) info = Object.assign({}, info, { family: false });
         ensureBotBar(w);
-        var icon = btn.querySelector('mat-icon');
+        var icon = btn.querySelector('span.rds-icon');
         var img = btn.querySelector('img.rcz-photo');
         if (info && !info.pending && info.photo && !info.familyDup) {
           // member with a photo on file -> show the photo (familyDup handled in its own branch below, which also
@@ -2365,7 +2365,7 @@
   // ROLLER's own class on the button carries the state: theme--success = checked in, theme--secondary = not.
   function shieldIsTicked(btn) {
     if (btn.classList.contains('theme--success')) return true;
-    var wrap = btn.closest ? btn.closest('app-icon-button') : null;
+    var wrap = btn.closest ? btn.closest('rds-checkbox-button') : null;
     return !!(wrap && wrap.classList.contains('theme--success'));
   }
   function installUndoCheckIn() {
@@ -2537,14 +2537,14 @@
       '.rcz-searchtype.rcz-st-other{background:#5b6470 !important;}'
     );
     if (CFG.HIDE_MEMBER_TICK) rules.push(
-      'body.rcz-hidetick .bip-summary-header app-icon-button:has(button[id^="check-in-button"]){display:none !important;}',
+      'body.rcz-hidetick .bip-summary-header rds-checkbox-button:has(button[id^="check-in-button"]){display:none !important;}',
       'body.rcz-hidetick .bip-summary-header button[id^="check-in-button"]{display:none !important;}'
     );
     if (CFG.HIDE_MEMBERSHIP_CHECKIN) rules.push(
       // On a membership profile (/search/memberships/...), remove the per-row check-in ticks and the
       // row/select-all checkboxes (revealed by the "Memberships (N/M)" filter) so a member cannot be
       // checked in from here. Whole membership area only — /search/bookings check-in is untouched.
-      'body.rcz-memcheckin-off app-bip-summary app-icon-button:has(button[id^="check-in-button"]){display:none !important;}',
+      'body.rcz-memcheckin-off app-bip-summary rds-checkbox-button:has(button[id^="check-in-button"]){display:none !important;}',
       'body.rcz-memcheckin-off app-bip-summary button[id^="check-in-button"]{display:none !important;}',
       'body.rcz-memcheckin-off mat-checkbox:has(input[id^="booking-details-checkbox-"]){display:none !important;}',
       'body.rcz-memcheckin-off mat-checkbox:has(input#select-all-checkbox-input){display:none !important;}'
