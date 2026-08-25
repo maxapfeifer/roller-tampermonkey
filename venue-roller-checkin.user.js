@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Venue — ROLLER Check-in Cards + Member Photos
 // @namespace    venue.roller.checkin-cards
-// @version      5.181
+// @version      5.182
 // @description  Reformats the ROLLER POS booking check-in list into full-frame photo cards, surfaces member photos on load (no Verify click), alerts when a member has no photo, handles family memberships (best-effort photos + add-name prompt) and close/similar name matches.
 // @match        https://pos.roller.app/*
 // @match        https://*.roller.app/*
@@ -260,7 +260,8 @@
     formsSeen:    {},   // rollerFormResponseId -> true (so we fetch each form's answers only once)
     searchTypes:  {},   // receiptNumber -> {membership:bool, product:str}  (from keyword-search, to tag search rows)
     selfFetching: false, // true while a self-triggered /api/bookings/<id> fetch is in flight
-    bookingId:    null  // URL booking ID whose data is currently held in state.booking / state.byCard
+    bookingId:    null,  // URL booking ID whose data is currently held in state.booking / state.byCard
+    onRespDebug:  null   // last onResponse booking intercept debug info (for rczState diagnosis)
   };
 
   /* ======================================================================
@@ -289,7 +290,7 @@
     try {
       url = String(url);
       if (/\/api\/bookings\/\d+(\?|$)/.test(url)) {
-        var j = JSON.parse(text); try { console.log('[rcz] onResponse booking', url, 'hasBipDetail=' + !!(j && j.bipDetail), 'keys=' + (j ? Object.keys(j).slice(0,12).join(',') : 'null')); } catch(e) {} if (j && j.bipDetail) { state.booking = j; var _bm = url.match(/\/api\/bookings\/(\d+)/); if (_bm) state.bookingId = _bm[1]; processBooking(); }
+        var j = JSON.parse(text); state.onRespDebug = { url: url, hasBipDetail: !!(j && j.bipDetail), keys: j ? Object.keys(j).slice(0,20) : [], bipDetailType: j ? typeof j.bipDetail : 'no j', bipDetailLen: j && Array.isArray(j.bipDetail) ? j.bipDetail.length : String(j && j.bipDetail) }; if (j && j.bipDetail) { state.booking = j; var _bm = url.match(/\/api\/bookings\/(\d+)/); if (_bm) state.bookingId = _bm[1]; processBooking(); }
       } else if (url.indexOf('get-membership') > -1) {
         var g = JSON.parse(text); if (g && g.bookingItemPartId !== undefined) resolveFromMemberPart(g.bookingItemPartId, g.imageFileName || null);
       } else if (url.indexOf('keyword-search') > -1) {
@@ -3268,7 +3269,7 @@
   try {
     window.rczVersion = SCRIPT_VERSION;
     window.rczDiag = function () { var r = rczRunChecks(); try { console.table(r); } catch (e) { console.log(JSON.stringify(r, null, 1)); } return r; };
-    window.rczState = function () { return { bookingId: state.bookingId, selfFetching: state.selfFetching, byCardCount: Object.keys(state.byCard).length, byCardKeys: Object.keys(state.byCard), hasBooking: !!state.booking, bipDetailLength: state.booking && Array.isArray(state.booking.bipDetail) ? state.booking.bipDetail.length : (state.booking ? typeof state.booking.bipDetail : 'no booking'), bipDetailSample: state.booking && Array.isArray(state.booking.bipDetail) && state.booking.bipDetail.length ? state.booking.bipDetail[0] : (state.booking ? state.booking.bipDetail : null), bookingTopKeys: state.booking ? Object.keys(state.booking).slice(0, 15) : [], authOrigins: Object.keys(state.authByOrigin), authHeaderKeys: Object.fromEntries(Object.keys(state.authByOrigin).map(function(o){return[o,Object.keys(state.authByOrigin[o])]})) }; };
+    window.rczState = function () { return { bookingId: state.bookingId, selfFetching: state.selfFetching, byCardCount: Object.keys(state.byCard).length, byCardKeys: Object.keys(state.byCard), hasBooking: !!state.booking, bipDetailLength: state.booking && Array.isArray(state.booking.bipDetail) ? state.booking.bipDetail.length : (state.booking ? typeof state.booking.bipDetail : 'no booking'), bipDetailSample: state.booking && Array.isArray(state.booking.bipDetail) && state.booking.bipDetail.length ? state.booking.bipDetail[0] : (state.booking ? state.booking.bipDetail : null), bookingTopKeys: state.booking ? Object.keys(state.booking).slice(0, 15) : [], authOrigins: Object.keys(state.authByOrigin), authHeaderKeys: Object.fromEntries(Object.keys(state.authByOrigin).map(function(o){return[o,Object.keys(state.authByOrigin[o])]})), onRespDebug: state.onRespDebug }; };
     window.rczTestFetch = function (id) { var urlId = id || (location.pathname.match(/\/bookings\/(\d+)/)||[])[1]; if (!urlId) { console.log('[rcz] no booking id'); return; } var auth = state.authByOrigin['https://api.roller.app'] || state.authByOrigin['https://doorlist.roller.app'] || {}; var headers = Object.assign({ 'Content-Type': 'application/json' }, auth); console.log('[rcz] fetching booking ' + urlId + ' with headers:', Object.keys(headers)); oFetch('https://api.roller.app/api/bookings/' + urlId + '?includeBookingMeta=true', { credentials: 'include', headers: headers }).then(function(res){ return res.text().then(function(t){ console.log('[rcz] status=' + res.status + ' body[0:400]=' + t.slice(0,400)); }); }).catch(function(e){ console.log('[rcz] fetch error:', e); }); };
     window.rczHealth = function () { var log = []; try { log = JSON.parse(localStorage.getItem('rcz-health-log') || '[]'); } catch (e) {} console.log('[rcz] health log — ' + log.length + ' entr' + (log.length === 1 ? 'y' : 'ies') + ' (machine ' + rczMachineId() + '):'); log.forEach(function (e) { console.log(e.date + '  ' + e.check + '  v' + e.version + '  ' + e.path); }); return log; };
     // Fire a REAL alert now, through the exact report path a genuine bug uses (dedup cleared so it's repeatable).
