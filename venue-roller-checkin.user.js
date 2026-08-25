@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Venue — ROLLER Check-in Cards + Member Photos
 // @namespace    venue.roller.checkin-cards
-// @version      5.174
+// @version      5.175
 // @description  Reformats the ROLLER POS booking check-in list into full-frame photo cards, surfaces member photos on load (no Verify click), alerts when a member has no photo, handles family memberships (best-effort photos + add-name prompt) and close/similar name matches.
 // @match        https://pos.roller.app/*
 // @match        https://*.roller.app/*
@@ -258,7 +258,8 @@
     birthdays:    {},   // cardId(bookingItemPartId) -> month number 1-12 (from Ticket Holder Details form)
     formNames:    {},   // cardId(bookingItemPartId) -> first name (from Ticket Holder Details form) when the ticket's own name is blank
     formsSeen:    {},   // rollerFormResponseId -> true (so we fetch each form's answers only once)
-    searchTypes:  {}    // receiptNumber -> {membership:bool, product:str}  (from keyword-search, to tag search rows)
+    searchTypes:  {},   // receiptNumber -> {membership:bool, product:str}  (from keyword-search, to tag search rows)
+    selfFetching: false // true while a self-triggered /api/bookings/<id> fetch is in flight
   };
 
   /* ======================================================================
@@ -457,6 +458,24 @@
     return m === cur || m === next || m === prev;
   }
   function nameMeaning(name) { var k = firstName(name); return (k && NAME_MEANINGS[k]) || null; }
+
+  // Roller's RDS version serves today's bookings from in-memory cache, so clicking a booking
+  // never fires a /api/bookings/<id> XHR — our hook misses it. Self-fetch when we're on the
+  // booking route but have no data yet. Uses auth stashed from the boot-time /api/bookings/today call.
+  function selfFetchBooking() {
+    if (state.booking || state.selfFetching) return;
+    var m = location.pathname.match(/\/bookings\/(\d+)/); if (!m) return;
+    var auth = state.authByOrigin['https://doorlist.roller.app']; if (!auth) return;
+    state.selfFetching = true;
+    var headers = Object.assign({ 'Content-Type': 'application/json' }, auth);
+    oFetch('https://doorlist.roller.app/api/bookings/' + m[1], { credentials: 'include', headers: headers })
+      .then(function (res) { return res.ok ? res.json().catch(function () { return null; }) : null; })
+      .then(function (j) {
+        state.selfFetching = false;
+        if (j && j.bipDetail) { state.booking = j; processBooking(); }
+      })
+      .catch(function () { state.selfFetching = false; });
+  }
 
   function processBooking() {
     try {
@@ -1810,6 +1829,7 @@
         return;
       }
       injectStyle();
+      selfFetchBooking();            // Roller RDS serves today bookings from cache — no XHR fires; pull data ourselves
       retextMissingPhotosBanner();   // reword ROLLER's native "Missing member photos" banner sub-line
       retextSectionPills();          // relabel ROLLER's grey section pills ("OPEN ITEMS", "TODAY")
       // #4: back on the booking screen with a "ready" handoff for THIS booking -> fire the modal once
