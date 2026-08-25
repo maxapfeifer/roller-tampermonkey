@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Venue — ROLLER Check-in Cards + Member Photos
 // @namespace    venue.roller.checkin-cards
-// @version      5.188
+// @version      5.189
 // @description  Reformats the ROLLER POS booking check-in list into full-frame photo cards, surfaces member photos on load (no Verify click), alerts when a member has no photo, handles family memberships (best-effort photos + add-name prompt) and close/similar name matches.
 // @match        https://pos.roller.app/*
 // @match        https://*.roller.app/*
@@ -818,12 +818,17 @@
     } catch (e) {}
   }
 
-  function fetchMembership(t) {
+  function fetchMembership(t, attempt) {
     // get-membership lives on doorlist, so prefer doorlist's captured headers; fall back to api's Bearer (doorlist
     // accepts it). Doorlist REQUIRES its identity headers (X-BrowserId / X-DeviceId) or it 400s — add them from
     // localStorage in case the captured set didn't include them.
     var auth = state.authByOrigin['https://doorlist.roller.app'] || state.authByOrigin['https://api.roller.app'] || {};
-    if (!(auth.Authorization || auth.authorization)) return; // no borrowed Bearer yet -> stays pending; Verify-click fallback still works
+    if (!(auth.Authorization || auth.authorization)) {
+      // Bearer not captured yet (it's borrowed from ROLLER's own requests, which may fire just after the booking
+      // loads). Retry briefly so photos still resolve automatically; the Verify-click fallback also still works.
+      if ((attempt || 0) < 12) setTimeout(function () { fetchMembership(t, (attempt || 0) + 1); }, 500);
+      return;
+    }
     var fb = {};
     try { var bid = localStorage.getItem('browser-id'); if (bid && !auth['X-BrowserId'] && !auth['x-browserid']) fb['X-BrowserId'] = bid; } catch (e) {}
     try { var did = localStorage.getItem('device-id'); if (did && !auth['X-DeviceId'] && !auth['x-deviceid']) fb['X-DeviceId'] = did; } catch (e) {}
