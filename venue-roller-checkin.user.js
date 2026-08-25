@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Venue — ROLLER Check-in Cards + Member Photos
 // @namespace    venue.roller.checkin-cards
-// @version      5.186
+// @version      5.187
 // @description  Reformats the ROLLER POS booking check-in list into full-frame photo cards, surfaces member photos on load (no Verify click), alerts when a member has no photo, handles family memberships (best-effort photos + add-name prompt) and close/similar name matches.
 // @match        https://pos.roller.app/*
 // @match        https://*.roller.app/*
@@ -295,7 +295,8 @@
         if (j) { state.onRespDebug.keys = Object.keys(j).slice(0,20); state.onRespDebug.hasBipDetail = !!j.bipDetail; }
         if (j && j.bipDetail) { state.booking = j; var _bm = url.match(/\/api\/bookings\/(\d+)/); if (_bm) state.bookingId = _bm[1]; processBooking(); }
       } else if (url.indexOf('get-membership') > -1) {
-        var g = JSON.parse(text); if (g && g.bookingItemPartId !== undefined) resolveFromMemberPart(g.bookingItemPartId, g.imageFileName || null);
+        window._gmRespLog = (window._gmRespLog || []); try { window._gmRespLog.push({ url: url, body: text ? text.slice(0, 500) : '(empty)' }); } catch(e) {}
+        var g = null; try { g = JSON.parse(text); } catch(e) {} if (g && g.bookingItemPartId !== undefined) resolveFromMemberPart(g.bookingItemPartId, g.imageFileName || null);
       } else if (url.indexOf('keyword-search') > -1) {
         indexSearchResults(JSON.parse(text));
       } else if (url.indexOf('/api/bookings/today') > -1) {
@@ -400,6 +401,9 @@
     // cleanup after reading the body, which would cancel our res.clone().text() read otherwise.
     var INTERCEPT_URL_RE = /\/api\/bookings\/\d+(\?|$)|get-membership|keyword-search|\/api\/bookings\/today/;
     var needIntercept = INTERCEPT_URL_RE.test(String(url));
+    if (needIntercept && String(url).indexOf('get-membership') > -1) {
+      window._gmReqLog = (window._gmReqLog || []); try { window._gmReqLog.push({ body: init.body || '(no body)', hdrs: Object.keys(init.headers || {}) }); } catch(e) {}
+    }
     var fetchArgs = args;
     if (needIntercept && (init.signal || (args[0] && args[0].signal))) {
       var noSignalInit = Object.assign({}, init); delete noSignalInit.signal;
@@ -3287,7 +3291,8 @@
   try {
     window.rczVersion = SCRIPT_VERSION;
     window.rczDiag = function () { var r = rczRunChecks(); try { console.table(r); } catch (e) { console.log(JSON.stringify(r, null, 1)); } return r; };
-    window.rczState = function () { return { bookingId: state.bookingId, selfFetching: state.selfFetching, byCardCount: Object.keys(state.byCard).length, byCardKeys: Object.keys(state.byCard), hasBooking: !!state.booking, bipDetailLength: state.booking && Array.isArray(state.booking.bipDetail) ? state.booking.bipDetail.length : (state.booking ? typeof state.booking.bipDetail : 'no booking'), bipDetailSample: state.booking && Array.isArray(state.booking.bipDetail) && state.booking.bipDetail.length ? state.booking.bipDetail[0] : (state.booking ? state.booking.bipDetail : null), bookingTopKeys: state.booking ? Object.keys(state.booking).slice(0, 15) : [], authOrigins: Object.keys(state.authByOrigin), authHeaderKeys: Object.fromEntries(Object.keys(state.authByOrigin).map(function(o){return[o,Object.keys(state.authByOrigin[o])]})), onRespDebug: state.onRespDebug }; };
+    window.rczState = function () { return { bookingId: state.bookingId, selfFetching: state.selfFetching, byCardCount: Object.keys(state.byCard).length, byCardKeys: Object.keys(state.byCard), hasBooking: !!state.booking, bipDetailLength: state.booking && Array.isArray(state.booking.bipDetail) ? state.booking.bipDetail.length : (state.booking ? typeof state.booking.bipDetail : 'no booking'), bipDetailSample: state.booking && Array.isArray(state.booking.bipDetail) && state.booking.bipDetail.length ? state.booking.bipDetail[0] : (state.booking ? state.booking.bipDetail : null), bookingTopKeys: state.booking ? Object.keys(state.booking).slice(0, 15) : [], authOrigins: Object.keys(state.authByOrigin), authHeaderKeys: Object.fromEntries(Object.keys(state.authByOrigin).map(function(o){return[o,Object.keys(state.authByOrigin[o])]})), onRespDebug: state.onRespDebug, gmReqLog: window._gmReqLog || [], gmRespLog: window._gmRespLog || [], discounts: state.booking ? (state.booking.discounts||[]).map(function(d){return{name:d.memberName,r:d.memberReceiptNumber,b:d.memberBookingItemPartId,code:d.discountCode};}) : [] }; };
+    window.rczGmTest = function (bodyObj) { var auth = state.authByOrigin['https://api.roller.app'] || {}; var headers = Object.assign({'Content-Type':'application/json'}, auth); return oFetch(CFG.GET_MEMBERSHIP, {method:'POST',credentials:'include',headers:headers,body:JSON.stringify(bodyObj)}).then(function(r){return r.text().then(function(t){console.log('[rcz] gm status='+r.status+' body='+t);return{status:r.status,body:t};});}).catch(function(e){console.log('[rcz] gm error:',e);}); };
     window.rczTestFetch = function (id) { var urlId = id || (location.pathname.match(/\/bookings\/(\d+)/)||[])[1]; if (!urlId) { console.log('[rcz] no booking id'); return; } var auth = state.authByOrigin['https://api.roller.app'] || state.authByOrigin['https://doorlist.roller.app'] || {}; var headers = Object.assign({ 'Content-Type': 'application/json' }, auth); console.log('[rcz] fetching booking ' + urlId + ' with headers:', Object.keys(headers)); oFetch('https://api.roller.app/api/bookings/' + urlId + '?includeBookingMeta=true', { credentials: 'include', headers: headers }).then(function(res){ return res.text().then(function(t){ console.log('[rcz] status=' + res.status + ' body[0:400]=' + t.slice(0,400)); }); }).catch(function(e){ console.log('[rcz] fetch error:', e); }); };
     window.rczHealth = function () { var log = []; try { log = JSON.parse(localStorage.getItem('rcz-health-log') || '[]'); } catch (e) {} console.log('[rcz] health log — ' + log.length + ' entr' + (log.length === 1 ? 'y' : 'ies') + ' (machine ' + rczMachineId() + '):'); log.forEach(function (e) { console.log(e.date + '  ' + e.check + '  v' + e.version + '  ' + e.path); }); return log; };
     // Fire a REAL alert now, through the exact report path a genuine bug uses (dedup cleared so it's repeatable).
