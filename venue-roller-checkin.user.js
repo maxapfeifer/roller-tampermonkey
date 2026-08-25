@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Venue — ROLLER Check-in Cards + Member Photos
 // @namespace    venue.roller.checkin-cards
-// @version      5.182
+// @version      5.183
 // @description  Reformats the ROLLER POS booking check-in list into full-frame photo cards, surfaces member photos on load (no Verify click), alerts when a member has no photo, handles family memberships (best-effort photos + add-name prompt) and close/similar name matches.
 // @match        https://pos.roller.app/*
 // @match        https://*.roller.app/*
@@ -290,7 +290,10 @@
     try {
       url = String(url);
       if (/\/api\/bookings\/\d+(\?|$)/.test(url)) {
-        var j = JSON.parse(text); state.onRespDebug = { url: url, hasBipDetail: !!(j && j.bipDetail), keys: j ? Object.keys(j).slice(0,20) : [], bipDetailType: j ? typeof j.bipDetail : 'no j', bipDetailLen: j && Array.isArray(j.bipDetail) ? j.bipDetail.length : String(j && j.bipDetail) }; if (j && j.bipDetail) { state.booking = j; var _bm = url.match(/\/api\/bookings\/(\d+)/); if (_bm) state.bookingId = _bm[1]; processBooking(); }
+        state.onRespDebug = { url: url, textLen: text ? text.length : 0, textPreview: text ? text.slice(0,150) : '(empty)', parseError: null, keys: [], hasBipDetail: false };
+        var j = null; try { j = JSON.parse(text); } catch(pe) { state.onRespDebug.parseError = pe.message; }
+        if (j) { state.onRespDebug.keys = Object.keys(j).slice(0,20); state.onRespDebug.hasBipDetail = !!j.bipDetail; }
+        if (j && j.bipDetail) { state.booking = j; var _bm = url.match(/\/api\/bookings\/(\d+)/); if (_bm) state.bookingId = _bm[1]; processBooking(); }
       } else if (url.indexOf('get-membership') > -1) {
         var g = JSON.parse(text); if (g && g.bookingItemPartId !== undefined) resolveFromMemberPart(g.bookingItemPartId, g.imageFileName || null);
       } else if (url.indexOf('keyword-search') > -1) {
@@ -374,7 +377,13 @@
     var xhr = this, u = String(xhr.__rczUrl || '');
     if (u.indexOf('/api/') > -1) stashAuth(u, xhr.__rczHdr);
     if (/\/api\/bookings\/\d+(\?|$)/.test(u) || u.indexOf('get-membership') > -1 || u.indexOf('keyword-search') > -1 || u.indexOf('/api/bookings/today') > -1) {
-      xhr.addEventListener('load', function () { onResponse(u, xhr.responseText); });
+      xhr.addEventListener('load', function () {
+        var txt; try { txt = xhr.responseText; } catch(e) { txt = ''; }
+        if (!txt && xhr.response !== null && xhr.response !== undefined) {
+          try { txt = JSON.stringify(xhr.response); } catch(e) { txt = ''; }
+        }
+        onResponse(u, txt || '');
+      });
     }
     return oSend.apply(this, arguments);
   };
