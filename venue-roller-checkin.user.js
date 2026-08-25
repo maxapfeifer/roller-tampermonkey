@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Venue — ROLLER Check-in Cards + Member Photos
 // @namespace    venue.roller.checkin-cards
-// @version      5.177
+// @version      5.178
 // @description  Reformats the ROLLER POS booking check-in list into full-frame photo cards, surfaces member photos on load (no Verify click), alerts when a member has no photo, handles family memberships (best-effort photos + add-name prompt) and close/similar name matches.
 // @match        https://pos.roller.app/*
 // @match        https://*.roller.app/*
@@ -3268,6 +3268,7 @@
   try {
     window.rczVersion = SCRIPT_VERSION;
     window.rczDiag = function () { var r = rczRunChecks(); try { console.table(r); } catch (e) { console.log(JSON.stringify(r, null, 1)); } return r; };
+    window.rczState = function () { return { bookingId: state.bookingId, selfFetching: state.selfFetching, byCardCount: Object.keys(state.byCard).length, byCardKeys: Object.keys(state.byCard), hasBooking: !!state.booking, bipDetailLength: state.booking && Array.isArray(state.booking.bipDetail) ? state.booking.bipDetail.length : (state.booking ? typeof state.booking.bipDetail : 'no booking'), bipDetailSample: state.booking && Array.isArray(state.booking.bipDetail) && state.booking.bipDetail.length ? state.booking.bipDetail[0] : (state.booking ? state.booking.bipDetail : null), bookingTopKeys: state.booking ? Object.keys(state.booking).slice(0, 15) : [], authOrigins: Object.keys(state.authByOrigin) }; };
     window.rczHealth = function () { var log = []; try { log = JSON.parse(localStorage.getItem('rcz-health-log') || '[]'); } catch (e) {} console.log('[rcz] health log — ' + log.length + ' entr' + (log.length === 1 ? 'y' : 'ies') + ' (machine ' + rczMachineId() + '):'); log.forEach(function (e) { console.log(e.date + '  ' + e.check + '  v' + e.version + '  ' + e.path); }); return log; };
     // Fire a REAL alert now, through the exact report path a genuine bug uses (dedup cleared so it's repeatable).
     window.rczTestAlert = function () {
