@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Venue — ROLLER Check-in Cards + Member Photos
 // @namespace    venue.roller.checkin-cards
-// @version      5.176
+// @version      5.177
 // @description  Reformats the ROLLER POS booking check-in list into full-frame photo cards, surfaces member photos on load (no Verify click), alerts when a member has no photo, handles family memberships (best-effort photos + add-name prompt) and close/similar name matches.
 // @match        https://pos.roller.app/*
 // @match        https://*.roller.app/*
@@ -921,7 +921,7 @@
   }
   // The shield label ("I.D." over a small "& Checkin") needs two font sizes, so it can't be a CSS
   // pseudo-element — inject a real element into each check-in button; CSS shows it only when the
-  // button is in the not-checked-in (theme--secondary) state.
+  // button is in the not-checked-in (:not(.is-checked)) state.
   function ensureShields() {
     if (!CFG.SHOW_SHIELD) return;
     document.querySelectorAll('app-bip-summary:not(.rcz-skip) button[id^="check-in-button"]').forEach(function (btn) {
@@ -1005,17 +1005,17 @@
          stays clickable; the shield (when on) is drawn as ::before so the whole square still taps. */
       'app-bip-summary:not(.rcz-skip) .summary__wrapper rds-checkbox-button.align-top:has(button[id^="check-in-button"]) button{width:48px !important;height:48px !important;min-width:48px !important;min-height:48px !important;padding:0 !important;position:relative !important;overflow:visible !important;' + (CFG.SHOW_SHIELD ? 'background:transparent !important;border:none !important;box-shadow:none !important;border-radius:0 !important;' : 'border-radius:12px !important;box-shadow:0 2px 8px rgba(0,0,0,.35) !important;') + '}',
       'app-bip-summary:not(.rcz-skip) .summary__wrapper button[id^="check-in-button"] span.rds-icon{font-size:26px !important;width:26px !important;height:26px !important;line-height:26px !important;position:relative !important;z-index:1 !important;}',
-      /* SHIELD — reacts to ROLLER\'s own state class: theme--secondary = NOT checked in (amber "I.D."),
-         theme--success = checked in (green tick). Pure CSS, so it flips the instant staff check someone in. */
+      /* SHIELD — reacts to ROLLER RDS state class: no .is-checked = NOT checked in (grey outline shield),
+         .is-checked = checked in (green filled shield). Pure CSS, flips the instant staff check someone in. */
       (CFG.SHOW_SHIELD ? 'app-bip-summary:not(.rcz-skip) .summary__wrapper button[id^="check-in-button"]::before{content:"" !important;position:absolute !important;inset:0 !important;z-index:0 !important;clip-path:path("M24 2 L44 9 L44 24 C44 36 35 43 24 47 C13 43 4 36 4 24 L4 9 Z") !important;filter:drop-shadow(0 2px 3px rgba(0,0,0,.4)) !important;}' : ''),
-      (CFG.SHOW_SHIELD ? 'app-bip-summary:not(.rcz-skip) .summary__wrapper button[id^="check-in-button"].theme--secondary::before{background:transparent !important;filter:none !important;}' : ''),
-      (CFG.SHOW_SHIELD ? 'app-bip-summary:not(.rcz-skip) .summary__wrapper button[id^="check-in-button"].theme--success::before{background:#16a34a !important;}' : ''),
-      (CFG.SHOW_SHIELD ? 'app-bip-summary:not(.rcz-skip) .summary__wrapper button[id^="check-in-button"].theme--secondary span.rds-icon{display:none !important;}' : ''),
+      (CFG.SHOW_SHIELD ? 'app-bip-summary:not(.rcz-skip) .summary__wrapper button[id^="check-in-button"]:not(.is-checked)::before{background:transparent !important;filter:none !important;}' : ''),
+      (CFG.SHOW_SHIELD ? 'app-bip-summary:not(.rcz-skip) .summary__wrapper button[id^="check-in-button"].is-checked::before{background:#16a34a !important;}' : ''),
+      (CFG.SHOW_SHIELD ? 'app-bip-summary:not(.rcz-skip) .summary__wrapper button[id^="check-in-button"]:not(.is-checked) span.rds-icon{display:none !important;}' : ''),
       (CFG.SHOW_SHIELD ? '.rcz-shieldtxt{position:absolute !important;inset:0 !important;z-index:1 !important;display:none;flex-direction:column !important;align-items:center !important;justify-content:center !important;padding-bottom:6px !important;color:#fff !important;pointer-events:none !important;text-align:center !important;}' : ''),
-      (CFG.SHOW_SHIELD ? 'app-bip-summary:not(.rcz-skip) button[id^="check-in-button"].theme--secondary .rcz-shieldtxt{display:flex !important;}' : ''),
+      (CFG.SHOW_SHIELD ? 'app-bip-summary:not(.rcz-skip) button[id^="check-in-button"]:not(.is-checked) .rcz-shieldtxt{display:flex !important;}' : ''),
       (CFG.SHOW_SHIELD ? '.rcz-shieldtxt__tick{display:flex !important;align-items:center !important;justify-content:center !important;}' : ''),
       (CFG.SHOW_SHIELD ? '.rcz-shieldtxt__tick svg{width:46px !important;height:46px !important;margin:0 !important;overflow:visible !important;}' : ''),
-      (CFG.SHOW_SHIELD ? 'app-bip-summary:not(.rcz-skip) .summary__wrapper button[id^="check-in-button"].theme--success span.rds-icon{color:#fff !important;margin-bottom:6px !important;}' : ''),
+      (CFG.SHOW_SHIELD ? 'app-bip-summary:not(.rcz-skip) .summary__wrapper button[id^="check-in-button"].is-checked span.rds-icon{color:#fff !important;margin-bottom:6px !important;}' : ''),
 
       /* ALERT (member with no photo) — fills the whole card and dominates; icon hidden */
       '.rcz-alert{position:absolute !important;inset:0 !important;display:flex !important;flex-direction:column !important;align-items:center !important;justify-content:center !important;text-align:center !important;color:#e5231b !important;z-index:5 !important;pointer-events:none !important;padding:16px 18px 92px !important;gap:8px !important;}',
@@ -2389,11 +2389,9 @@
       try { render(); } catch (e) {}
     }, 250);
   }
-  // ROLLER's own class on the button carries the state: theme--success = checked in, theme--secondary = not.
+  // ROLLER RDS state: .is-checked on the button = checked in; absence of .is-checked = not checked in.
   function shieldIsTicked(btn) {
-    if (btn.classList.contains('theme--success')) return true;
-    var wrap = btn.closest ? btn.closest('rds-checkbox-button') : null;
-    return !!(wrap && wrap.classList.contains('theme--success'));
+    return btn.classList.contains('is-checked');
   }
   function installUndoCheckIn() {
     if (!CFG.UNDO_CHECKIN || window.__rczUndoNav) return; window.__rczUndoNav = true;
