@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Venue — ROLLER Check-in Cards + Member Photos
 // @namespace    venue.roller.checkin-cards
-// @version      5.191
+// @version      5.192
 // @description  Reformats the ROLLER POS booking check-in list into full-frame photo cards, surfaces member photos on load (no Verify click), alerts when a member has no photo, handles family memberships (best-effort photos + add-name prompt) and close/similar name matches.
 // @match        https://pos.roller.app/*
 // @match        https://*.roller.app/*
@@ -87,7 +87,7 @@
     WARN_HEADING:     'WARNING: MISSING DATA',                   // ACTION REQUIRED banner big heading (missing-data / ADD PHOTO box only)
     WARN_SUB:         'COMPLETE MEMBER PROFILE TO AVOID CANCELLATION',  // ACTION REQUIRED banner sub-line
     MISMATCH_ACTREQ_HD: 'FRAUD FLAG: NAME MISMATCH',              // heading on the name-mismatch action box
-    MISMATCH_ACTREQ_SUB: 'PLEASE CHECK PHOTO EXTRA CAREFULLY',    // sub-line on the name-mismatch action box
+    MISMATCH_ACTREQ_SUB: 'CHECK PHOTOS & CONFIRM {NAME} IS ALSO A MEMBER',    // sub-line on the name-mismatch action box; {NAME} = the booking/ticket name
     MISSING_PHOTOS_MSG: 'Add missing photos to avoid auto cancellation of memberships',  // reword ROLLER's "Missing member photos" banner sub-line (native text: "Add missing photos to help staff verify members quickly.")
     OPEN_ITEMS_LABEL:  'Membership profiles below',  // relabel ROLLER's "OPEN ITEMS" section pill ('' = leave it as-is)
     OPEN_ITEMS_SUB:    '(If you’re trying to check these guests in, please find or add tickets)',  // smaller second line under OPEN_ITEMS_LABEL ('' = none)
@@ -1661,7 +1661,7 @@
     var nm = String(ticketName || '').toUpperCase();
     return '<a href="#" class="rcz-mmx" data-rcz-unlock="' + esc(cardId) + '" data-rcz-act="nickname" title="Dismiss">×</a>' +
            '<div class="rcz-actreq__hd">' + esc(CFG.MISMATCH_ACTREQ_HD) + '</div>' +
-           (withSub ? '<div class="rcz-actreq__sub">' + esc(CFG.MISMATCH_ACTREQ_SUB) + '</div>' : '') +
+           (withSub ? '<div class="rcz-actreq__sub">' + esc(CFG.MISMATCH_ACTREQ_SUB.split('{NAME}').join(nm || 'THIS GUEST')) + '</div>' : '') +
            '<div class="rcz-actreq__links"><a href="#" class="rcz-mmbtn" data-rcz-unlock="' + esc(cardId) + '" data-rcz-act="addticket">ADD A TICKET FOR ' + esc(nm) + '</a></div>';
   }
   // main name-mismatch box (photo tiles + no-photo hard mismatch): the frosted .rcz-actreq--mm
