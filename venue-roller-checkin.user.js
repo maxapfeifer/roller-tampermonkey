@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Venue — ROLLER Check-in Cards + Member Photos
 // @namespace    venue.roller.checkin-cards
-// @version      5.175
+// @version      5.176
 // @description  Reformats the ROLLER POS booking check-in list into full-frame photo cards, surfaces member photos on load (no Verify click), alerts when a member has no photo, handles family memberships (best-effort photos + add-name prompt) and close/similar name matches.
 // @match        https://pos.roller.app/*
 // @match        https://*.roller.app/*
@@ -259,7 +259,8 @@
     formNames:    {},   // cardId(bookingItemPartId) -> first name (from Ticket Holder Details form) when the ticket's own name is blank
     formsSeen:    {},   // rollerFormResponseId -> true (so we fetch each form's answers only once)
     searchTypes:  {},   // receiptNumber -> {membership:bool, product:str}  (from keyword-search, to tag search rows)
-    selfFetching: false // true while a self-triggered /api/bookings/<id> fetch is in flight
+    selfFetching: false, // true while a self-triggered /api/bookings/<id> fetch is in flight
+    bookingId:    null  // URL booking ID whose data is currently held in state.booking / state.byCard
   };
 
   /* ======================================================================
@@ -288,7 +289,7 @@
     try {
       url = String(url);
       if (/\/api\/bookings\/\d+(\?|$)/.test(url)) {
-        var j = JSON.parse(text); if (j && j.bipDetail) { state.booking = j; processBooking(); }
+        var j = JSON.parse(text); if (j && j.bipDetail) { state.booking = j; var _bm = url.match(/\/api\/bookings\/(\d+)/); if (_bm) state.bookingId = _bm[1]; processBooking(); }
       } else if (url.indexOf('get-membership') > -1) {
         var g = JSON.parse(text); if (g && g.bookingItemPartId !== undefined) resolveFromMemberPart(g.bookingItemPartId, g.imageFileName || null);
       } else if (url.indexOf('keyword-search') > -1) {
@@ -463,12 +464,18 @@
   // never fires a /api/bookings/<id> XHR — our hook misses it. Self-fetch when we're on the
   // booking route but have no data yet. Uses auth stashed from the boot-time /api/bookings/today call.
   function selfFetchBooking() {
-    if (state.booking || state.selfFetching) return;
     var m = location.pathname.match(/\/bookings\/(\d+)/); if (!m) return;
+    var urlId = m[1];
+    // Navigated to a different booking — discard stale data so we fetch fresh
+    if (state.bookingId && state.bookingId !== urlId) {
+      state.booking = null; state.byCard = {}; state.bookingId = null; state.selfFetching = false;
+    }
+    if (state.booking || state.selfFetching) return;
     var auth = state.authByOrigin['https://doorlist.roller.app']; if (!auth) return;
     state.selfFetching = true;
+    state.bookingId = urlId;
     var headers = Object.assign({ 'Content-Type': 'application/json' }, auth);
-    oFetch('https://doorlist.roller.app/api/bookings/' + m[1], { credentials: 'include', headers: headers })
+    oFetch('https://doorlist.roller.app/api/bookings/' + urlId + '?includeBookingMeta=true', { credentials: 'include', headers: headers })
       .then(function (res) { return res.ok ? res.json().catch(function () { return null; }) : null; })
       .then(function (j) {
         state.selfFetching = false;
