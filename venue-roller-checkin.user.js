@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Venue — ROLLER Check-in Cards + Member Photos
 // @namespace    venue.roller.checkin-cards
-// @version      5.183
+// @version      5.184
 // @description  Reformats the ROLLER POS booking check-in list into full-frame photo cards, surfaces member photos on load (no Verify click), alerts when a member has no photo, handles family memberships (best-effort photos + add-name prompt) and close/similar name matches.
 // @match        https://pos.roller.app/*
 // @match        https://*.roller.app/*
@@ -396,7 +396,16 @@
       if (init.headers) { if (typeof init.headers.forEach === 'function') init.headers.forEach(function (v, k) { hdrs[k] = v; }); else Object.assign(hdrs, init.headers); }
       if (String(url).indexOf('/api/') > -1) stashAuth(url, hdrs);
     } catch (e) {}
-    return oFetch.apply(this, args).then(function (res) {
+    // Strip AbortSignal for URLs we need to intercept: Angular fires controller.abort() as RxJS
+    // cleanup after reading the body, which would cancel our res.clone().text() read otherwise.
+    var INTERCEPT_URL_RE = /\/api\/bookings\/\d+(\?|$)|get-membership|keyword-search|\/api\/bookings\/today/;
+    var needIntercept = INTERCEPT_URL_RE.test(String(url));
+    var fetchArgs = args;
+    if (needIntercept && (init.signal || (args[0] && args[0].signal))) {
+      var noSignalInit = Object.assign({}, init); delete noSignalInit.signal;
+      fetchArgs = args[0] instanceof Request ? [new Request(args[0], noSignalInit)] : [args[0], noSignalInit];
+    }
+    return oFetch.apply(this, fetchArgs).then(function (res) {
       try { var u = (res && res.url) || url; if (/\/api\/bookings\/\d+(\?|$)/.test(String(u)) || String(u).indexOf('get-membership') > -1 || String(u).indexOf('keyword-search') > -1 || String(u).indexOf('/api/bookings/today') > -1) res.clone().text().then(function (t) { onResponse(u, t); }).catch(function () {}); } catch (e) {}
       return res;
     });
