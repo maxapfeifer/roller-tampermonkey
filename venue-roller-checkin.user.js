@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Venue — ROLLER Check-in Cards + Member Photos
 // @namespace    venue.roller.checkin-cards
-// @version      5.192
+// @version      5.193
 // @description  Reformats the ROLLER POS booking check-in list into full-frame photo cards, surfaces member photos on load (no Verify click), alerts when a member has no photo, handles family memberships (best-effort photos + add-name prompt) and close/similar name matches.
 // @match        https://pos.roller.app/*
 // @match        https://*.roller.app/*
@@ -1950,7 +1950,15 @@
           var mem = '<b>' + esc((info.memberName || 'another member').toUpperCase()) + '</b>';
           var tk = esc(info.ticketName || 'this guest');
           var note = esc(CFG.MISMATCH_NOTE_TMPL).split('{MEMBER}').join(mem).split('{TICKET}').join(tk);
-          clrMismatch(w); addMismatchBox(w, cardId, info.ticketName); clrAlert(w); clrCasual(w); clrVisiting(w); clrNote(w); if (info.tier) addBadge(w, info.tier, memHref(info, cardId), info.visiting); else clrBadge(w);
+          clrMismatch(w); clrAlert(w); clrCasual(w); clrVisiting(w); clrNote(w);
+          if (snoozedName(cardId)) {
+            // mismatch dismissed (black X) for ~2 min -> drop the FRAUD box. If a photo is still missing, leave the
+            // lighter ADD PHOTO prompt (name-ack keeps the photo requirement); otherwise clear the box entirely.
+            if (photoGate(w, info) && !snoozedPhoto(cardId)) addActionReq(w, cardId, memberActions(w, info, cardId, false)); else clrActionReq(w);
+          } else {
+            addMismatchBox(w, cardId, info.ticketName);
+          }
+          if (info.tier) addBadge(w, info.tier, memHref(info, cardId), info.visiting); else clrBadge(w);
         } else if (info && !info.pending && info.member) {
           // NOTE: visiting members (visiting from another museum) deliberately fall through to here rather
           // than having their own branch. They used to be handled above with hasPhoto hard-coded to false,
