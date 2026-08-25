@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Venue — ROLLER Check-in Cards + Member Photos
 // @namespace    venue.roller.checkin-cards
-// @version      5.187
+// @version      5.188
 // @description  Reformats the ROLLER POS booking check-in list into full-frame photo cards, surfaces member photos on load (no Verify click), alerts when a member has no photo, handles family memberships (best-effort photos + add-name prompt) and close/similar name matches.
 // @match        https://pos.roller.app/*
 // @match        https://*.roller.app/*
@@ -267,7 +267,7 @@
   /* ======================================================================
      NETWORK HOOKS  (installed at document-start, before ROLLER runs)
      ====================================================================== */
-  var AUTH_RE = /^(authorization|x-[a-z-]+|requestverificationtoken|traceparent|baggage)$/i;
+  var AUTH_RE = /^(authorization|accept|current-venue|x-[a-z-]+|requestverificationtoken|traceparent|baggage)$/i;
 
   function stashAuth(url, headers) {
     try {
@@ -394,7 +394,10 @@
     var args = arguments, url = (args[0] && args[0].url) || args[0], init = args[1] || {};
     try {
       var hdrs = {};
-      if (init.headers) { if (typeof init.headers.forEach === 'function') init.headers.forEach(function (v, k) { hdrs[k] = v; }); else Object.assign(hdrs, init.headers); }
+      // RDS-migrated ROLLER calls fetch(new Request(url, {headers})) — the headers live on the Request (args[0]),
+      // NOT in an init arg. Read BOTH, or stashAuth captures nothing (auth empty -> our get-membership 400s/401s).
+      var hsrc = init.headers || (args[0] && args[0].headers);
+      if (hsrc) { if (typeof hsrc.forEach === 'function') hsrc.forEach(function (v, k) { hdrs[k] = v; }); else Object.assign(hdrs, hsrc); }
       if (String(url).indexOf('/api/') > -1) stashAuth(url, hdrs);
     } catch (e) {}
     // Strip AbortSignal for URLs we need to intercept: Angular fires controller.abort() as RxJS
@@ -816,9 +819,15 @@
   }
 
   function fetchMembership(t) {
-    var auth = state.authByOrigin['https://api.roller.app'] || state.authByOrigin['https://doorlist.roller.app'];
-    if (!auth) return; // no borrowed auth yet -> stays pending; Verify-click fallback still works
-    var headers = Object.assign({ 'Content-Type': 'application/json' }, auth);
+    // get-membership lives on doorlist, so prefer doorlist's captured headers; fall back to api's Bearer (doorlist
+    // accepts it). Doorlist REQUIRES its identity headers (X-BrowserId / X-DeviceId) or it 400s — add them from
+    // localStorage in case the captured set didn't include them.
+    var auth = state.authByOrigin['https://doorlist.roller.app'] || state.authByOrigin['https://api.roller.app'] || {};
+    if (!(auth.Authorization || auth.authorization)) return; // no borrowed Bearer yet -> stays pending; Verify-click fallback still works
+    var fb = {};
+    try { var bid = localStorage.getItem('browser-id'); if (bid && !auth['X-BrowserId'] && !auth['x-browserid']) fb['X-BrowserId'] = bid; } catch (e) {}
+    try { var did = localStorage.getItem('device-id'); if (did && !auth['X-DeviceId'] && !auth['x-deviceid']) fb['X-DeviceId'] = did; } catch (e) {}
+    var headers = Object.assign({ 'Content-Type': 'application/json' }, auth, fb);
     window.fetch(CFG.GET_MEMBERSHIP, {
       method: 'POST', credentials: 'include', headers: headers,
       body: JSON.stringify({ receiptNumber: t.r, bookingItemPartId: t.b })
