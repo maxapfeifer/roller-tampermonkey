@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Venue — ROLLER Check-in Cards + Member Photos
 // @namespace    venue.roller.checkin-cards
-// @version      5.189
+// @version      5.190
 // @description  Reformats the ROLLER POS booking check-in list into full-frame photo cards, surfaces member photos on load (no Verify click), alerts when a member has no photo, handles family memberships (best-effort photos + add-name prompt) and close/similar name matches.
 // @match        https://pos.roller.app/*
 // @match        https://*.roller.app/*
@@ -98,7 +98,8 @@
     SEARCH_MEM_LABEL:  'M/SHIP',                      // badge text for a membership-purchase search result
     SEARCH_TKT_LABEL:  'TICKETS',                    // badge text for an attendance-ticket search result
     SEARCH_GIFT_LABEL: 'GIFT CARD',                  // badge text for a gift-card search result
-    SEARCH_OTHER_LABEL:'OTHER',                      // badge text for a result with no guest attached (walk-up café/retail/misc)
+    SEARCH_OTHER_LABEL:'OTHER',                      // badge text for a result that HAS a guest but isn't an admission (e.g. café/retail charged to an account)
+    SEARCH_RETAIL_LABEL:'Retail/Café',               // badge text for a result with NO guest attached (walk-up café/retail/misc — no name available)
     BLOCK_PROFILE_CHECKIN: true,  // hide the check-in tick on membership tiles under the "MEMBERSHIP PROFILES ONLY" (ROLLER's OPEN ITEMS) section — those are membership PROFILES, not a dated admission. ALL member types. Tiles under a DATE section (a real session booking) keep their tick.
     HIDE_MEMBER_TICK: true,      // on a membership PROFILE detail page (member profile via search, or a membership item detail), hide ROLLER's check-in tick in the header. All member types. Leaves the Back button and ticket item details alone.
     HIDE_MEMBERSHIP_CHECKIN: true, // on ANY membership screen (/search/memberships/...), hide the per-row check-in tick buttons (check-in-button-<id>) AND the row/select-all checkboxes revealed by the "Memberships (N/M)" filter — staff must NOT check members in from a membership profile (check in via a ticket/booking instead). Does not touch /search/bookings where check-in is legitimate.
@@ -349,7 +350,7 @@
   // Classify a search result into a badge type. Order matters:
   //   1. membership  -> M/SHIP    (priority, with or without a guest)
   //   2. gift card   -> GIFT CARD (priority, with or without a guest)
-  //   3. no guest    -> OTHER     (walk-up café / retail — no person attached)
+  //   3. no guest    -> RETAIL    (walk-up café / retail — no person attached; badged "Retail/Café")
   //   4. guest + admission product -> TICKETS
   //   5. guest but not an admission (e.g. café charged to an account) -> OTHER
   // Validity window in days (bookingEndDate - bookingDate). An admission is single-day (~0); a membership /
@@ -361,7 +362,7 @@
     var p = String(product || (o && o.productName) || '');
     if (/wonder club|gold pass|\bmembership\b|unlocks/i.test(p)) return 'membership';
     if (/gift\s*card/i.test(p)) return 'giftcard';
-    if (!hasGuest(o)) return 'other';
+    if (!hasGuest(o)) return 'retail';   // no name at all -> walk-up café / retail
     // Some memberships/annual passes are named exactly like admissions ("Adult (18+ years), Child (0-18 years)")
     // with NO membership keyword. An admission is single-day; a membership runs long — so a long validity span
     // means membership even without a keyword. Exclude multi-visit packages ("Book for 6") which can also run long.
@@ -1634,7 +1635,7 @@
   // ticket type + name at bottom-right (so the age type is intentionally dropped on these tiles).
   function mismatchNamesFor(w, info, cardId) {
     if (!info || info.pending) return null;
-    if (info.mismatch || info.closematch) return { t: info.ticketName, m: info.memberName };
+    if (info.mismatch || info.closematch || info.familyDup) return { t: info.ticketName, m: info.memberName };
     if (info.member && !info.family && !info.misaligned && !info.paidMember && !info.visiting) {
       var pm = pillMismatchCheck(w, cardId);
       if (pm) return { t: pm.ticketName, m: pm.memberName };
@@ -3193,9 +3194,10 @@
       badge.classList.toggle('rcz-st-mem', type === 'membership');
       badge.classList.toggle('rcz-st-gift', type === 'giftcard');
       badge.classList.toggle('rcz-st-tkt', type === 'tickets');
-      badge.classList.toggle('rcz-st-other', type === 'other');
+      badge.classList.toggle('rcz-st-other', type === 'other' || type === 'retail');   // retail reuses the grey style
       badge.textContent = type === 'membership' ? CFG.SEARCH_MEM_LABEL
                         : type === 'giftcard' ? CFG.SEARCH_GIFT_LABEL
+                        : type === 'retail' ? CFG.SEARCH_RETAIL_LABEL
                         : type === 'other' ? CFG.SEARCH_OTHER_LABEL
                         : CFG.SEARCH_TKT_LABEL;
     }
