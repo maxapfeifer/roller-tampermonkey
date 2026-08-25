@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Venue — ROLLER Check-in Cards + Member Photos
 // @namespace    venue.roller.checkin-cards
-// @version      5.180
+// @version      5.181
 // @description  Reformats the ROLLER POS booking check-in list into full-frame photo cards, surfaces member photos on load (no Verify click), alerts when a member has no photo, handles family memberships (best-effort photos + add-name prompt) and close/similar name matches.
 // @match        https://pos.roller.app/*
 // @match        https://*.roller.app/*
@@ -289,7 +289,7 @@
     try {
       url = String(url);
       if (/\/api\/bookings\/\d+(\?|$)/.test(url)) {
-        var j = JSON.parse(text); if (j && j.bipDetail) { state.booking = j; var _bm = url.match(/\/api\/bookings\/(\d+)/); if (_bm) state.bookingId = _bm[1]; processBooking(); }
+        var j = JSON.parse(text); try { console.log('[rcz] onResponse booking', url, 'hasBipDetail=' + !!(j && j.bipDetail), 'keys=' + (j ? Object.keys(j).slice(0,12).join(',') : 'null')); } catch(e) {} if (j && j.bipDetail) { state.booking = j; var _bm = url.match(/\/api\/bookings\/(\d+)/); if (_bm) state.bookingId = _bm[1]; processBooking(); }
       } else if (url.indexOf('get-membership') > -1) {
         var g = JSON.parse(text); if (g && g.bookingItemPartId !== undefined) resolveFromMemberPart(g.bookingItemPartId, g.imageFileName || null);
       } else if (url.indexOf('keyword-search') > -1) {
