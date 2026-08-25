@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Venue — ROLLER Check-in Cards + Member Photos
 // @namespace    venue.roller.checkin-cards
-// @version      5.185
+// @version      5.186
 // @description  Reformats the ROLLER POS booking check-in list into full-frame photo cards, surfaces member photos on load (no Verify click), alerts when a member has no photo, handles family memberships (best-effort photos + add-name prompt) and close/similar name matches.
 // @match        https://pos.roller.app/*
 // @match        https://*.roller.app/*
@@ -812,10 +812,11 @@
   }
 
   function fetchMembership(t) {
-    // doorlist uses cookie auth — no explicit auth headers needed or wanted (X-Cell-Id from api.roller.app
-    // routes to a different shard and would break the request on doorlist's routing layer).
+    var auth = state.authByOrigin['https://api.roller.app'] || state.authByOrigin['https://doorlist.roller.app'];
+    if (!auth) return; // no borrowed auth yet -> stays pending; Verify-click fallback still works
+    var headers = Object.assign({ 'Content-Type': 'application/json' }, auth);
     window.fetch(CFG.GET_MEMBERSHIP, {
-      method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
+      method: 'POST', credentials: 'include', headers: headers,
       body: JSON.stringify({ receiptNumber: t.r, bookingItemPartId: t.b })
     }).then(function (res) { return res.ok ? res.json().catch(function () { return null; }) : undefined; })
       .then(function (gm) {
