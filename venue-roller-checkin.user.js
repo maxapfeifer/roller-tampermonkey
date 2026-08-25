@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Venue — ROLLER Check-in Cards + Member Photos
 // @namespace    venue.roller.checkin-cards
-// @version      5.190
+// @version      5.191
 // @description  Reformats the ROLLER POS booking check-in list into full-frame photo cards, surfaces member photos on load (no Verify click), alerts when a member has no photo, handles family memberships (best-effort photos + add-name prompt) and close/similar name matches.
 // @match        https://pos.roller.app/*
 // @match        https://*.roller.app/*
@@ -99,7 +99,7 @@
     SEARCH_TKT_LABEL:  'TICKETS',                    // badge text for an attendance-ticket search result
     SEARCH_GIFT_LABEL: 'GIFT CARD',                  // badge text for a gift-card search result
     SEARCH_OTHER_LABEL:'OTHER',                      // badge text for a result that HAS a guest but isn't an admission (e.g. café/retail charged to an account)
-    SEARCH_RETAIL_LABEL:'Retail/Café',               // badge text for a result with NO guest attached (walk-up café/retail/misc — no name available)
+    SEARCH_RETAIL_LABEL:'RETAIL/CAFE',               // badge text for a result with NO guest attached (walk-up café/retail/misc — no name available)
     BLOCK_PROFILE_CHECKIN: true,  // hide the check-in tick on membership tiles under the "MEMBERSHIP PROFILES ONLY" (ROLLER's OPEN ITEMS) section — those are membership PROFILES, not a dated admission. ALL member types. Tiles under a DATE section (a real session booking) keep their tick.
     HIDE_MEMBER_TICK: true,      // on a membership PROFILE detail page (member profile via search, or a membership item detail), hide ROLLER's check-in tick in the header. All member types. Leaves the Back button and ticket item details alone.
     HIDE_MEMBERSHIP_CHECKIN: true, // on ANY membership screen (/search/memberships/...), hide the per-row check-in tick buttons (check-in-button-<id>) AND the row/select-all checkboxes revealed by the "Memberships (N/M)" filter — staff must NOT check members in from a membership profile (check in via a ticket/booking instead). Does not touch /search/bookings where check-in is legitimate.
