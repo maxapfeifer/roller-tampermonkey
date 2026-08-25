@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Venue — ROLLER Check-in Cards + Member Photos
 // @namespace    venue.roller.checkin-cards
-// @version      5.184
+// @version      5.185
 // @description  Reformats the ROLLER POS booking check-in list into full-frame photo cards, surfaces member photos on load (no Verify click), alerts when a member has no photo, handles family memberships (best-effort photos + add-name prompt) and close/similar name matches.
 // @match        https://pos.roller.app/*
 // @match        https://*.roller.app/*
@@ -35,7 +35,7 @@
     CARD_RADIUS_PX:    18,
     PLACEHOLDER_ICON_PX: 150,// size of the grey person icon when there's no photo
     CDN:              'https://cdn.rollerdigital.com/ticket/',
-    GET_MEMBERSHIP:   'https://api.roller.app/api/customers/get-membership',
+    GET_MEMBERSHIP:   'https://doorlist.roller.app/api/customers/get-membership',
     // Foster-care partnership discounts: free-entry codes that are NOT memberships. Matched (lower-cased,
     // substring) against the discount code and name. Add future partner codes here. Guests carrying one are
     // shown as a "Foster CARE Ticket" (where "Casual Guest" normally sits), never as members.
@@ -812,11 +812,10 @@
   }
 
   function fetchMembership(t) {
-    var auth = state.authByOrigin['https://api.roller.app'] || state.authByOrigin['https://doorlist.roller.app'];
-    if (!auth) return; // no borrowed auth yet -> stays pending; Verify-click fallback still works
-    var headers = Object.assign({ 'Content-Type': 'application/json' }, auth);
+    // doorlist uses cookie auth — no explicit auth headers needed or wanted (X-Cell-Id from api.roller.app
+    // routes to a different shard and would break the request on doorlist's routing layer).
     window.fetch(CFG.GET_MEMBERSHIP, {
-      method: 'POST', credentials: 'include', headers: headers,
+      method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ receiptNumber: t.r, bookingItemPartId: t.b })
     }).then(function (res) { return res.ok ? res.json().catch(function () { return null; }) : undefined; })
       .then(function (gm) {
