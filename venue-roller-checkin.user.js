@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Venue — ROLLER Check-in Cards + Member Photos
 // @namespace    venue.roller.checkin-cards
-// @version      5.195
+// @version      5.196
 // @description  Reformats the ROLLER POS booking check-in list into full-frame photo cards, surfaces member photos on load (no Verify click), alerts when a member has no photo, handles family memberships (best-effort photos + add-name prompt) and close/similar name matches.
 // @match        https://pos.roller.app/*
 // @match        https://*.roller.app/*
@@ -3335,13 +3335,25 @@
     if (!CFG.NET_HEALTH) return;
     try {
       if (!state.netFail) state.netFail = {};
-      if (ok) { state.netFail[key] = 0; return; }
+      var st = status | 0;
+      // Only auth/contract failures signal a ROLLER change that broke a tweak — 400 (bad/missing headers),
+      // 401/403 (auth rejected), 0 (network/CORS blocked): exactly the RDS-migration failure mode. Everything
+      // else is transient or legitimate and must NOT trip the alert, or the monitor cries wolf:
+      //   429 = rate-limited (self-fetch too eager; harmless, cached data still renders)
+      //   404/409 = booking genuinely not found (e.g. self-fetch on a membership page — the id isn't a booking)
+      //   5xx = ROLLER server-side blip, not our contract breaking
+      // A success OR any non-breakage response resets the streak (breakage must be CONSECUTIVE).
+      var isBreak = !ok && (st === 400 || st === 401 || st === 403 || st === 0);
+      if (!ok) {
+        var snip = String(body || '').replace(/\s+/g, ' ').trim().slice(0, 160);
+        rczLogHealth({ net: key, status: st, why: snip, breaking: isBreak, version: SCRIPT_VERSION, date: new Date().toISOString() });
+      }
+      if (!isBreak) { state.netFail[key] = 0; return; }
       state.netFail[key] = (state.netFail[key] || 0) + 1;
-      var snip = String(body || '').replace(/\s+/g, ' ').trim().slice(0, 160);
-      rczLogHealth({ net: key, status: status, why: snip, version: SCRIPT_VERSION, date: new Date().toISOString() });
       if (state.netFail[key] >= (CFG.NET_HEALTH_STREAK || 3)) {
-        rczReportHealth('net-' + key, key + ' calls FAILING (HTTP ' + status + '): ' + (snip || '(no body)') + ' — a ROLLER change likely broke this endpoint or its required headers.');
-        state.netFail[key] = 0;  // reset; rczReport's own 24h dedup prevents spam
+        var snip2 = String(body || '').replace(/\s+/g, ' ').trim().slice(0, 160);
+        rczReportHealth('net-' + key, key + ' calls FAILING (HTTP ' + st + '): ' + (snip2 || '(no body)') + ' — auth/headers rejected, a ROLLER change likely broke this endpoint.');
+        state.netFail[key] = 0;  // reset; rczReportHealth's own 24h dedup prevents spam
       }
     } catch (e) {}
   }
