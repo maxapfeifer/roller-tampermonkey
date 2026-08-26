@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Venue — ROLLER Check-in Cards + Member Photos
 // @namespace    venue.roller.checkin-cards
-// @version      5.194
+// @version      5.195
 // @description  Reformats the ROLLER POS booking check-in list into full-frame photo cards, surfaces member photos on load (no Verify click), alerts when a member has no photo, handles family memberships (best-effort photos + add-name prompt) and close/similar name matches.
 // @match        https://pos.roller.app/*
 // @match        https://*.roller.app/*
@@ -3311,6 +3311,22 @@
     }
     try { localStorage.setItem(key, String(Date.now())); } catch (e) {}
   }
+  // Health/version alerts go out as kind:'health' so the Apps Script tags them "[ROLLER health]" — distinct from
+  // the anchor watchdog's "[ROLLER watchdog]". Backward compatible: it also sets `check`, so an un-updated Apps
+  // Script still emails it (as a watchdog line) rather than dropping it. Same 24h per-id dedup.
+  function rczReportHealth(id, why) {
+    var key = 'rcz-hl:' + id + ':' + SCRIPT_VERSION, last = 0;
+    try { last = parseInt(localStorage.getItem(key) || '0', 10) || 0; } catch (e) {}
+    if (Date.now() - last < CFG.WATCHDOG_MIN_HOURS * 3600000) return;
+    var payload = { kind: 'health', check: id, why: why, version: SCRIPT_VERSION, machine: rczMachineId(), path: String(location.pathname || '').replace(/\d+/g, '#'), date: new Date().toISOString() };
+    rczLogHealth(payload);
+    if (CFG.WATCHDOG_URL) {
+      var body = JSON.stringify(payload), sent = false;
+      try { sent = navigator.sendBeacon(CFG.WATCHDOG_URL, body); } catch (e) {}
+      if (!sent) { try { fetch(CFG.WATCHDOG_URL, { method: 'POST', mode: 'no-cors', keepalive: true, body: body }); } catch (e) {} }
+    }
+    try { localStorage.setItem(key, String(Date.now())); } catch (e) {}
+  }
   // NETWORK-OUTCOME monitor (#1): the DOM watchdog can't see a data/auth break — it watches anchors, not results.
   // This watches OUR ROLLER API calls: on repeated non-2xx for one endpoint, email the endpoint + status + a
   // response snippet (e.g. "get-membership 400: A valid X-BrowserId header is required") — an actionable alert that
@@ -3324,7 +3340,7 @@
       var snip = String(body || '').replace(/\s+/g, ' ').trim().slice(0, 160);
       rczLogHealth({ net: key, status: status, why: snip, version: SCRIPT_VERSION, date: new Date().toISOString() });
       if (state.netFail[key] >= (CFG.NET_HEALTH_STREAK || 3)) {
-        rczReport({ id: 'net-' + key, why: 'HEALTH: ' + key + ' calls FAILING (HTTP ' + status + '): ' + (snip || '(no body)') + ' — a ROLLER change likely broke this endpoint or its required headers.' });
+        rczReportHealth('net-' + key, key + ' calls FAILING (HTTP ' + status + '): ' + (snip || '(no body)') + ' — a ROLLER change likely broke this endpoint or its required headers.');
         state.netFail[key] = 0;  // reset; rczReport's own 24h dedup prevents spam
       }
     } catch (e) {}
@@ -3337,7 +3353,7 @@
     try {
       v = String(v || '').trim(); if (!v) return;
       var prev = localStorage.getItem('rcz-roller-version') || '';
-      if (prev && prev !== v) rczReport({ id: 'roller-version-' + v, why: 'ROLLER UPDATED: build ' + prev + ' -> ' + v + '. Re-verify the userscript tweaks — this is exactly the kind of update that has broken things before.' });
+      if (prev && prev !== v) rczReportHealth('roller-version-' + v, 'ROLLER UPDATED: build ' + prev + ' -> ' + v + '. Re-verify the userscript tweaks — this is exactly the kind of update that has broken things before.');
       if (prev !== v) localStorage.setItem('rcz-roller-version', v);
     } catch (e) {}
   }

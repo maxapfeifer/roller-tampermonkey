@@ -1,0 +1,113 @@
+<title>Discount-code entries — treatment options</title>
+<style>
+  :root{
+    --bg:#e7e9ee; --panel:#fff; --ink:#1c222b; --muted:#69727e; --hair:#d9dde3;
+    --tile:#f4f5f7; --tile-none:#e6e8eb; --tile-hair:#e3e6ea;
+    --warn-red:#e5231b; --warn-sub:#a12a20; --warn-link:#2f6fed; --tier-blue:#2f6fed; --visit-mag:#b4308f;
+    --ui:-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif; --roboto:Roboto,Arial,sans-serif;
+  }
+  @media (prefers-color-scheme:dark){
+    :root{ --bg:#12151a; --panel:#1b2027; --ink:#e7eaee; --muted:#98a1ac; --hair:#2b323b;
+      --tile:#20262d; --tile-none:#2a313a; --tile-hair:#333b45; }
+  }
+  :root[data-theme="light"]{ --bg:#e7e9ee; --panel:#fff; --ink:#1c222b; --muted:#69727e; --hair:#d9dde3; --tile:#f4f5f7; --tile-none:#e6e8eb; --tile-hair:#e3e6ea; }
+  :root[data-theme="dark"]{ --bg:#12151a; --panel:#1b2027; --ink:#e7eaee; --muted:#98a1ac; --hair:#2b323b; --tile:#20262d; --tile-none:#2a313a; --tile-hair:#333b45; }
+
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--ui);line-height:1.5;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:1060px;margin:0 auto;padding:44px 24px 80px}
+  .eyebrow{font-size:11.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--warn-sub);font-weight:700;margin:0 0 8px}
+  h1{font-size:27px;line-height:1.14;margin:0 0 10px;letter-spacing:-.01em;text-wrap:balance}
+  .lede{max-width:70ch;color:var(--muted);margin:0 0 8px;font-size:15px}
+  .lede b{color:var(--ink);font-weight:600}
+  .cols{display:flex;gap:24px;flex-wrap:wrap;align-items:flex-start;margin-top:34px}
+  .col{display:flex;flex-direction:column;gap:12px;width:300px}
+  .col h3{margin:0;font-size:12px;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);display:flex;align-items:center;gap:8px;font-weight:700}
+  .col h3 .dot{width:9px;height:9px;border-radius:50%}
+  .now h3 .dot{background:#e5231b}
+  .a h3 .dot{background:#2f9e6f}
+  .b h3 .dot{background:var(--tier-blue)}
+  .cap{font-size:13px;color:var(--muted);margin:4px 0 0}
+  .cap b{color:var(--ink)}
+
+  .tile{position:relative;border-radius:14px;overflow:hidden;background:var(--tile);aspect-ratio:1/1;
+    box-shadow:0 1px 3px rgba(0,0,0,.16),0 8px 22px rgba(0,0,0,.07);display:flex;flex-direction:column}
+  .figs{position:absolute;inset:0;background:var(--tile-none)}
+  .figs::after{content:"";position:absolute;inset:0;background:url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="120" height="150" viewBox="0 0 120 150"><g fill="rgba(140,148,158,.5)"><circle cx="60" cy="56" r="27"/><path d="M20 150c0-26 18-42 40-42s40 16 40 42z"/></g></svg>') center 42%/48% no-repeat}
+  .status{position:relative;z-index:6;background:rgba(255,255,255,.55);-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);border-bottom:1px solid rgba(0,0,0,.07);padding:7px 11px 5px;font:400 12.5px/1.32 var(--roboto);color:#1f2933}
+  .status .warn{color:#e5231b}
+  .status .tick{color:#8b929b;font-weight:700}
+  @media (prefers-color-scheme:dark){ .status{color:#1f2933} }
+  .stack{position:relative;z-index:3;flex:1;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;gap:8px;padding:8px 8px}
+  .box{width:calc(100% - 6px);background:rgba(255,255,255,.9);-webkit-backdrop-filter:blur(4px);backdrop-filter:blur(4px);border-radius:12px;padding:9px 12px 10px;box-shadow:0 3px 12px rgba(0,0,0,.18);text-align:center}
+  .box .hd{font:800 16px/1.14 var(--roboto);color:var(--warn-red)}
+  .box .sub{font:700 10px/1.25 var(--roboto);color:var(--warn-sub);margin-top:3px}
+  .box .links{margin-top:5px}
+  .box .links a{font:800 16px/1 var(--roboto);color:var(--warn-link);text-decoration:underline;text-underline-offset:2px}
+  .box .or{color:var(--warn-sub);font:700 13px/1 var(--roboto);margin:0 3px}
+  .botbar{position:relative;z-index:4;background:rgba(255,255,255,.55);border-top:1px solid var(--tile-hair);-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:8px;padding:8px 11px;min-height:50px}
+  .tier{display:flex;flex-direction:column;white-space:nowrap;line-height:1.3}
+  .tier span{font:700 15px/1.3 var(--roboto);color:var(--tier-blue)}
+  .tier .vis{color:var(--visit-mag)}
+  .casualtag{font:700 15px/1.3 var(--roboto);color:#565d66}
+  .who{text-align:right;font:400 13px/1.28 var(--roboto);color:#1f2933}
+  .who .ty{display:block;color:#7b828c;font-weight:600}
+  .who .nm{display:block;font-weight:800;color:#111827}
+  @media (prefers-color-scheme:dark){ .who,.who .nm{color:#1f2933} }
+  .shield{width:30px;height:32px;flex:none}
+  .mmnames{text-align:right;font:800 13px/1.3 var(--roboto)}
+  .mmnames .l{color:#111827}.mmnames .v{color:#e5231b;margin-left:4px}
+  .note{margin-top:20px;font-size:13.5px;color:var(--muted);border-top:1px solid var(--hair);padding-top:16px;max-width:70ch}
+  .note b{color:var(--ink)}
+</style>
+
+<div class="wrap">
+  <p class="eyebrow">ROLLER Check-in · decision</p>
+  <h1>How should discount-code entries be treated?</h1>
+  <p class="lede">Booking 108829392 uses <b>discount codes</b> (e.g. <code>discount_11888396…</code>) with <b>no member name</b> —
+    reciprocal / cross-museum entries. The tile for <b>Jan</b> gets a meaningless <b>"Membership: ?"</b> fraud flag because there's no name to compare.
+    Two ways to handle it — pick one.</p>
+
+  <div class="cols">
+    <!-- CURRENT -->
+    <div class="col now">
+      <h3><span class="dot"></span>Now (the bug)</h3>
+      <div class="tile"><div class="figs"></div>
+        <div class="status">Name: <span class="warn">Not Matching</span><br>Photo: <span class="warn">Required Today (Add)</span></div>
+        <div class="stack"><div class="box"><div class="hd">FRAUD WARNING: NAME ON MEMBERSHIP DOESN'T MATCH NAME ON TICKET</div><div class="links"><a href="#">ADD TICKET</a><span class="or">or</span><a href="#">PASS NICKNAME</a></div></div></div>
+        <div class="botbar"><div class="tier"><span>Gold Pass</span><span>Member</span></div>
+          <div class="mmnames"><div><span class="l">Booking:</span><span class="v">Jan</span></div><div><span class="l">Membership:</span><span class="v">?</span></div></div>
+          <svg class="shield" viewBox="0 0 66 68"><path d="M33 3 L61 12 L61 33 C61 49 48 59 33 64 C18 59 5 49 5 33 L5 12 Z" fill="#c9cdd3"/></svg></div>
+      </div>
+      <p class="cap">Fraud flag against a blank "?" — nonsense</p>
+    </div>
+
+    <!-- OPTION A -->
+    <div class="col a">
+      <h3><span class="dot"></span>Option A · treat as casual</h3>
+      <div class="tile"><div class="figs"></div>
+        <div class="status">&nbsp;<br>&nbsp;</div>
+        <div class="stack"></div>
+        <div class="botbar"><div class="casualtag">Casual Guest</div>
+          <div class="who"><span class="ty">Adult</span><span class="nm">Jan</span></div>
+          <svg class="shield" viewBox="0 0 66 68"><path d="M33 3 L61 12 L61 33 C61 49 48 59 33 64 C18 59 5 49 5 33 L5 12 Z" fill="#e0a316"/></svg></div>
+      </div>
+      <p class="cap">No name to verify → plain casual, <b>no flags at all</b>. But: no ADD PHOTO prompt, so a genuine cross-museum visitor wouldn't be asked for a photo.</p>
+    </div>
+
+    <!-- OPTION B -->
+    <div class="col b">
+      <h3><span class="dot"></span>Option B · visiting, no mismatch</h3>
+      <div class="tile"><div class="figs"></div>
+        <div class="status">Name: <span class="tick">—</span><br>Photo: <span class="warn">Required Today</span></div>
+        <div class="stack"><div class="box"><div class="hd">FRAUD WARNING: MISSING DATA</div><div class="sub">COMPLETE PROFILE TO AVOID CANCELLATION</div><div class="links"><a href="#">ADD PHOTO</a></div></div></div>
+        <div class="botbar"><div class="tier"><span>Gold Pass</span><span>Member <span class="vis">Visiting</span></span></div>
+          <div class="who"><span class="ty">Adult</span><span class="nm">Jan</span></div>
+          <svg class="shield" viewBox="0 0 66 68"><path d="M33 3 L61 12 L61 33 C61 49 48 59 33 64 C18 59 5 49 5 33 L5 12 Z" fill="#c9cdd3"/></svg></div>
+      </div>
+      <p class="cap">Treated like Megan &amp; Jack: <b>Visiting</b> + ADD PHOTO, <b>never</b> a name mismatch. Keeps the photo-handoff flow for real visitors.</p>
+    </div>
+  </div>
+
+  <p class="note"><b>The trade-off:</b> these code entries really are cross-museum <b>visiting members</b> (that's why Megan &amp; Jack already read "Visiting"). <b>Option A</b> is simplest but drops the ADD PHOTO prompt for them — meaning no photo gets taken/transferred. <b>Option B</b> keeps them consistent with Megan &amp; Jack (Visiting + ADD PHOTO) and just never fires a name mismatch when there's no name to compare. If you want photos captured for visitors, <b>B</b> is the match; if these should be waved through with no prompts, <b>A</b>.</p>
+</div>

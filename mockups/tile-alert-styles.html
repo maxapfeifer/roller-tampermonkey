@@ -1,0 +1,396 @@
+<title>Check-in Tile Alerts</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  /* ---- theme tokens (page chrome only; the tile swatches use the app's literal colours) ---- */
+  :root{
+    --bg:#eef1f5; --panel:#ffffff; --ink:#1a2230; --muted:#5b6675; --faint:#8a94a3;
+    --line:#dde3ec; --accent:#2f6fed; --accent-soft:#e7eefc; --chip:#f2f5fa;
+    --shadow:0 1px 3px rgba(20,30,50,.08),0 8px 24px rgba(20,30,50,.06);
+  }
+  :root:not([data-theme="light"]){ }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg:#12161d; --panel:#1a212b; --ink:#e7ecf3; --muted:#9aa6b6; --faint:#6b7787;
+      --line:#2a333f; --accent:#6ea0ff; --accent-soft:#1d2a42; --chip:#212a35;
+      --shadow:0 1px 3px rgba(0,0,0,.4),0 10px 30px rgba(0,0,0,.35);
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#12161d; --panel:#1a212b; --ink:#e7ecf3; --muted:#9aa6b6; --faint:#6b7787;
+    --line:#2a333f; --accent:#6ea0ff; --accent-soft:#1d2a42; --chip:#212a35;
+    --shadow:0 1px 3px rgba(0,0,0,.4),0 10px 30px rgba(0,0,0,.35);
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    line-height:1.5;-webkit-font-smoothing:antialiased;}
+  .wrap{max-width:1120px;margin:0 auto;padding:40px 24px 72px;}
+  header{margin-bottom:8px;}
+  .eyebrow{font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--accent);font-weight:700;}
+  h1{font-size:29px;line-height:1.12;margin:8px 0 6px;letter-spacing:-.01em;text-wrap:balance;}
+  .lede{color:var(--muted);max-width:64ch;margin:0;font-size:15.5px;}
+  h2{font-size:14px;letter-spacing:.1em;text-transform:uppercase;color:var(--faint);
+     font-weight:700;margin:44px 0 4px;padding-bottom:10px;border-bottom:1px solid var(--line);}
+  h2 .n{color:var(--muted);}
+  .sechint{color:var(--muted);font-size:14px;margin:10px 0 22px;max-width:70ch;}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(268px,1fr));gap:22px;align-items:start;}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:16px;overflow:hidden;box-shadow:var(--shadow);}
+  .card__meta{padding:14px 16px 16px;}
+  .card__name{font-weight:800;font-size:15px;margin:0 0 2px;}
+  .card__cls{font:600 11.5px/1.4 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;color:var(--accent);
+     background:var(--accent-soft);display:inline-block;padding:1px 7px;border-radius:6px;margin-bottom:8px;}
+  .card__desc{font-size:13px;color:var(--muted);margin:0;}
+  .card__desc b{color:var(--ink);font-weight:700;}
+  .sev{display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:700;letter-spacing:.03em;
+     text-transform:uppercase;margin-left:8px;}
+  .sev::before{content:"";width:8px;height:8px;border-radius:50%;}
+  .sev--info::before{background:#8a94a3}.sev--info{color:var(--faint)}
+  .sev--warn::before{background:#e5231b}.sev--warn{color:#e5231b}
+  .sev--action::before{background:#2f6fed}.sev--action{color:var(--accent)}
+
+  /* ============ faithful mock check-in tile (literal app colours; always light, like the real UI) ============ */
+  .tile{position:relative;height:328px;overflow:hidden;
+     background:linear-gradient(160deg,#c9d2dd 0%,#aeb9c6 45%,#8f9bab 100%);
+     font-family:"Roboto",Arial,sans-serif;color:#111827;}
+  /* faint "photo" head so overlays read against a face-like ground */
+  .tile::before{content:"";position:absolute;left:50%;top:34%;transform:translate(-50%,-50%);
+     width:150px;height:150px;border-radius:50%;background:radial-gradient(circle at 50% 40%,#e9edf2,#c3ccd7 70%,transparent);opacity:.65;}
+  .t-checkbox{position:absolute;top:10px;left:10px;width:20px;height:20px;border-radius:5px;border:2px solid #fff;background:rgba(255,255,255,.4);z-index:8;}
+  /* frosted bottom bar + shield + name label (present on every real tile) */
+  .t-botbar{position:absolute;left:0;right:0;bottom:0;height:66px;background:rgba(255,255,255,.55);
+     backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);border-top:1px solid rgba(0,0,0,.07);z-index:4;}
+  .t-shield{position:absolute;right:14px;bottom:12px;width:52px;height:52px;z-index:6;}
+  .t-shield svg{width:100%;height:100%;filter:drop-shadow(0 2px 3px rgba(0,0,0,.35))}
+  .t-locked{opacity:.34;filter:grayscale(.7)}
+  .t-namelbl{position:absolute;left:16px;bottom:14px;z-index:6;font:700 18px/1.2 "Roboto",Arial,sans-serif;color:#1f2933;}
+
+  /* status band */
+  .t-status{position:absolute;top:0;left:0;right:0;z-index:6;background:rgba(255,255,255,.55);
+     backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);border-bottom:1px solid rgba(0,0,0,.07);
+     padding:8px 11px 5px 40px;display:flex;justify-content:space-between;gap:10px;
+     font:400 12.5px/1.3 "Roboto",Arial,sans-serif;color:#1f2933;}
+  .t-status .row{display:flex;gap:4px;align-items:center}
+  .t-status .warn{color:#e5231b}
+  .t-status .tick{color:#8b929b;font-weight:700;margin-left:4px}
+  .t-status .time b{font:700 15px/1.15 "Roboto",Arial,sans-serif;color:#1f2933;white-space:nowrap}
+
+  /* red card-filling alert */
+  .t-alert{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;
+     text-align:center;color:#e5231b;z-index:5;padding:52px 18px 82px;gap:8px;}
+  .t-alert .hd{font:900 24px/1.02 "Roboto",Arial,sans-serif;letter-spacing:.01em}
+  .t-alert .bd{font:800 12px/1.28 "Roboto",Arial,sans-serif}
+
+  /* name-mismatch: red veil + bottom-right comparison */
+  .t-veil{position:absolute;top:0;left:0;right:0;bottom:66px;background:rgba(229,35,27,.42);z-index:2;}
+  .t-mmnames{position:absolute;right:76px;bottom:12px;z-index:6;display:flex;flex-direction:column;
+     align-items:flex-end;gap:1px;white-space:nowrap;text-align:right;}
+  .t-mmnames .r{font:700 17px/1.3 "Roboto",Arial,sans-serif}
+  .t-mmnames .lbl{color:#111827}
+  .t-mmnames .val{color:#e5231b;margin-left:5px}
+
+  /* frosted ACTION-REQUIRED box */
+  .t-actreq{position:absolute;left:8px;right:8px;bottom:76px;z-index:6;background:rgba(255,255,255,.86);
+     backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);border-radius:13px;padding:12px;
+     box-shadow:0 3px 12px rgba(0,0,0,.18);text-align:center;}
+  .t-actreq .hd{font:800 16px/1.18 "Roboto",Arial,sans-serif;color:#e5231b}
+  .t-actreq .sub{font:700 11px/1.25 "Roboto",Arial,sans-serif;color:#e5231b;margin-top:5px}
+  .t-actreq .links{display:flex;gap:10px;justify-content:center;margin-top:9px;flex-wrap:wrap}
+  .t-actreq .lk{color:#2f6fed;text-decoration:underline;text-underline-offset:2px;font:800 20px/1.1 "Roboto",Arial,sans-serif}
+
+  /* bordered action button (ADD A TICKET) + dismiss X */
+  .t-mmbtn{display:inline-block;border:2px solid #111827;border-radius:10px;padding:8px 16px;
+     background:rgba(255,255,255,.55);color:#2f6fed;font:800 18px/1.1 "Roboto",Arial,sans-serif;text-decoration:none}
+  .t-mmx{position:absolute;top:-13px;right:-6px;width:28px;height:28px;border-radius:50%;background:#111827;color:#fff;
+     display:flex;align-items:center;justify-content:center;font:700 18px/1 "Roboto",Arial,sans-serif;box-shadow:0 2px 6px rgba(0,0,0,.4);z-index:7}
+
+  /* dark note banner */
+  .t-note{position:absolute;top:0;left:0;right:0;z-index:5;background:rgba(17,20,24,.82);color:#fff;
+     padding:12px 16px 13px 40px;text-align:left;font:400 11px/1.32 "Roboto",Arial,sans-serif;}
+  .t-note .ti{display:block;font:600 11px/1.25 "Roboto",Arial,sans-serif;letter-spacing:.04em;margin-bottom:4px;color:#ffd23d}
+
+  /* casual tag */
+  .t-casual{position:absolute;left:16px;bottom:12px;z-index:6}
+  .t-casual .tag{font:700 18px/1.32 "Roboto",Arial,sans-serif;color:#565d66}
+  .t-casual .name{font:900 40px/1.02 "Roboto",Arial,sans-serif;color:#111827}
+
+  /* visiting red note pill */
+  .t-visit{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;
+     text-align:center;color:#e5231b;z-index:5;padding:52px 18px 78px;gap:10px}
+  .t-visit .hd{font:900 40px/1 "Roboto",Arial,sans-serif;letter-spacing:.02em}
+  .t-visit .pill{background:#e5231b;color:#fff;padding:8px 14px;border-radius:9px;
+     font:400 13px/1.25 "Roboto",Arial,sans-serif;letter-spacing:.03em;max-width:94%;box-shadow:0 2px 8px rgba(0,0,0,.28)}
+
+  /* proposed "approve" chips */
+  .opts{display:grid;grid-template-columns:repeat(auto-fill,minmax(268px,1fr));gap:22px;margin-top:22px}
+  .callout{background:var(--panel);border:1px solid var(--line);border-left:4px solid var(--accent);
+     border-radius:12px;padding:18px 20px;margin-top:26px;box-shadow:var(--shadow);}
+  .callout p{margin:0 0 10px;font-size:14.5px;color:var(--muted)}
+  .callout p:last-child{margin-bottom:0}
+  .callout b{color:var(--ink)}
+  footer{margin-top:40px;color:var(--faint);font-size:12.5px}
+</style>
+
+<div class="wrap">
+  <header>
+    <div class="eyebrow">ROLLER check-in tiles · style reference</div>
+    <h1>Check-in Tile Alerts</h1>
+    <p class="lede">Every warning, error and action treatment the userscript already paints on a check-in tile, shown at its real colours and weights. Use this to pick the treatment for the new <b>“Approve name mismatch”</b> control.</p>
+  </header>
+
+  <h2>Warning &amp; error states <span class="n">— what staff see</span></h2>
+  <p class="sechint">Roughly ordered lightest → heaviest. The heavier the treatment, the more it dominates the tile and the harder it is to check in past.</p>
+  <div class="grid">
+
+    <!-- STATUS BAND -->
+    <div class="card">
+      <div class="tile">
+        <div class="t-checkbox"></div>
+        <div class="t-status">
+          <div class="main">
+            <div class="row"><span class="lbl">Name:</span><span class="warn">Not Matching</span></div>
+            <div class="row"><span class="lbl">Photo:</span><span>Showing</span><span class="tick">✓</span></div>
+          </div>
+          <div class="time"><b>9:30 am</b></div>
+        </div>
+        <div class="t-botbar"></div>
+        <div class="t-namelbl">Victoria</div>
+        <div class="t-shield" title="ready shield">
+          <svg viewBox="0 0 48 50"><path d="M24 2 L44 9 L44 24 C44 36 35 43 24 47 C13 43 4 36 4 24 L4 9 Z" fill="none" stroke="#9aa3af" stroke-width="2"/><path d="M16 24 l6 6 l11 -12" fill="none" stroke="#c3ccd7" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </div>
+      </div>
+      <div class="card__meta">
+        <div class="card__name">Status band <span class="sev sev--info">subtle</span></div>
+        <span class="card__cls">.rcz-status</span>
+        <p class="card__desc">Frosted top strip on every member tile. Grey when fine; the value turns <b style="color:#e5231b">red</b> for “Not Matching”. Informational only — <b>does not block</b> check-in.</p>
+      </div>
+    </div>
+
+    <!-- ACTION REQUIRED FROSTED BOX -->
+    <div class="card">
+      <div class="tile">
+        <div class="t-checkbox"></div>
+        <div class="t-actreq">
+          <div class="hd">WARNING: MISSING DATA</div>
+          <div class="sub">COMPLETE MEMBER PROFILE TO AVOID CANCELLATION</div>
+          <div class="links"><span class="lk">ADD PHOTO</span></div>
+        </div>
+        <div class="t-botbar"></div>
+        <div class="t-namelbl">Ellie</div>
+        <div class="t-shield t-locked">
+          <svg viewBox="0 0 48 50"><path d="M24 2 L44 9 L44 24 C44 36 35 43 24 47 C13 43 4 36 4 24 L4 9 Z" fill="none" stroke="#9aa3af" stroke-width="2"/><path d="M16 24 l6 6 l11 -12" fill="none" stroke="#c3ccd7" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </div>
+      </div>
+      <div class="card__meta">
+        <div class="card__name">Action-required box <span class="sev sev--action">actionable</span></div>
+        <span class="card__cls">.rcz-actreq</span>
+        <p class="card__desc">Frosted white card, red heading, <b style="color:#2f6fed">blue underlined link(s)</b> that staff tap to resolve. Dims the shield until actioned. This is our standard “do this first” affordance.</p>
+      </div>
+    </div>
+
+    <!-- NAME MISMATCH (current Ellie treatment) -->
+    <div class="card">
+      <div class="tile">
+        <div class="t-checkbox"></div>
+        <div class="t-veil"></div>
+        <div class="t-mmnames">
+          <div class="r"><span class="lbl">Booking:</span><span class="val">Victoria</span></div>
+          <div class="r"><span class="lbl">Membership:</span><span class="val">Ellie</span></div>
+        </div>
+        <div class="t-botbar"></div>
+        <div class="t-namelbl">Victoria</div>
+        <div class="t-shield t-locked">
+          <svg viewBox="0 0 48 50"><path d="M24 2 L44 9 L44 24 C44 36 35 43 24 47 C13 43 4 36 4 24 L4 9 Z" fill="none" stroke="#9aa3af" stroke-width="2"/><path d="M16 24 l6 6 l11 -12" fill="none" stroke="#c3ccd7" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </div>
+      </div>
+      <div class="card__meta">
+        <div class="card__name">Name mismatch <span class="sev sev--warn">blocking</span></div>
+        <span class="card__cls">.rcz-mmveil + .rcz-mmnames</span>
+        <p class="card__desc">The current Ellie state: a <b style="color:#e5231b">red wash</b> over the photo and a right-aligned <b>Booking vs Membership</b> comparison (black label, red value). Shield <b>locked</b>. This is what the new Approve button would sit on.</p>
+      </div>
+    </div>
+
+    <!-- ADD A TICKET FOR X button + dismiss -->
+    <div class="card">
+      <div class="tile">
+        <div class="t-checkbox"></div>
+        <div class="t-veil"></div>
+        <div class="t-actreq" style="bottom:96px;padding-top:16px">
+          <a class="t-mmx" href="#" onclick="return false">×</a>
+          <div class="hd" style="margin-bottom:10px">NAME MISMATCH</div>
+          <div class="links"><a class="t-mmbtn" href="#" onclick="return false">ADD A TICKET FOR ELLIE</a></div>
+        </div>
+        <div class="t-botbar"></div>
+        <div class="t-namelbl">Victoria</div>
+        <div class="t-shield t-locked">
+          <svg viewBox="0 0 48 50"><path d="M24 2 L44 9 L44 24 C44 36 35 43 24 47 C13 43 4 36 4 24 L4 9 Z" fill="none" stroke="#9aa3af" stroke-width="2"/><path d="M16 24 l6 6 l11 -12" fill="none" stroke="#c3ccd7" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </div>
+      </div>
+      <div class="card__meta">
+        <div class="card__name">Bordered action button <span class="sev sev--action">actionable</span></div>
+        <span class="card__cls">.rcz-mmbtn + .rcz-mmx</span>
+        <p class="card__desc">Our strongest action affordance: a <b>bordered pill button</b> (black outline, blue text) plus a dark <b>dismiss ✕</b>. Used for “ADD A TICKET FOR …”. An “Approve” button could reuse this exact shape.</p>
+      </div>
+    </div>
+
+    <!-- MISSING DATA full red alert -->
+    <div class="card">
+      <div class="tile">
+        <div class="t-checkbox"></div>
+        <div class="t-alert">
+          <div class="hd">WARNING:<br>MISSING DATA</div>
+          <div class="bd">COMPLETE MEMBER PROFILE<br>TO AVOID CANCELLATION</div>
+        </div>
+        <div class="t-botbar"></div>
+        <div class="t-namelbl">Ellie</div>
+        <div class="t-shield t-locked">
+          <svg viewBox="0 0 48 50"><path d="M24 2 L44 9 L44 24 C44 36 35 43 24 47 C13 43 4 36 4 24 L4 9 Z" fill="none" stroke="#9aa3af" stroke-width="2"/><path d="M16 24 l6 6 l11 -12" fill="none" stroke="#c3ccd7" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </div>
+      </div>
+      <div class="card__meta">
+        <div class="card__name">Full red alert <span class="sev sev--warn">heaviest</span></div>
+        <span class="card__cls">.rcz-alert</span>
+        <p class="card__desc">Card-filling <b style="color:#e5231b">red text</b>, hides the ROLLER icon, dominates the tile. Reserved for the most serious “stop and fix” cases (e.g. missing photo will cancel the membership).</p>
+      </div>
+    </div>
+
+    <!-- VISITING -->
+    <div class="card">
+      <div class="tile">
+        <div class="t-checkbox"></div>
+        <div class="t-visit">
+          <div class="hd">PHOTO<br>REQUIRED<br>NOW</div>
+          <div class="pill">This member is visiting from another museum</div>
+        </div>
+        <div class="t-botbar"></div>
+        <div class="t-namelbl">Sam</div>
+        <div class="t-shield t-locked">
+          <svg viewBox="0 0 48 50"><path d="M24 2 L44 9 L44 24 C44 36 35 43 24 47 C13 43 4 36 4 24 L4 9 Z" fill="none" stroke="#9aa3af" stroke-width="2"/><path d="M16 24 l6 6 l11 -12" fill="none" stroke="#c3ccd7" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </div>
+      </div>
+      <div class="card__meta">
+        <div class="card__name">Visiting member <span class="sev sev--warn">blocking</span></div>
+        <span class="card__cls">.rcz-visiting</span>
+        <p class="card__desc">Red heading plus a solid <b style="color:#fff;background:#e5231b;padding:0 5px;border-radius:3px">red note pill</b> for the one-line explanation. A good pattern when a short sentence needs to stand out.</p>
+      </div>
+    </div>
+
+    <!-- NOTE banner -->
+    <div class="card">
+      <div class="tile">
+        <div class="t-checkbox"></div>
+        <div class="t-note"><span class="ti">ADD INDIVIDUAL NAME</span>This is a family membership — add each child’s own name so the pass shows who it is.</div>
+        <div class="t-botbar"></div>
+        <div class="t-namelbl">Charlie</div>
+        <div class="t-shield">
+          <svg viewBox="0 0 48 50"><path d="M24 2 L44 9 L44 24 C44 36 35 43 24 47 C13 43 4 36 4 24 L4 9 Z" fill="none" stroke="#9aa3af" stroke-width="2"/><path d="M16 24 l6 6 l11 -12" fill="none" stroke="#c3ccd7" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </div>
+      </div>
+      <div class="card__meta">
+        <div class="card__name">Note banner <span class="sev sev--info">informational</span></div>
+        <span class="card__cls">.rcz-note</span>
+        <p class="card__desc">Dark top scrim, white body, coloured title (<b style="color:#ffd23d;background:#111;padding:0 5px;border-radius:3px">amber</b> important, blue “similar name”, green “paid”). Quiet, non-blocking context.</p>
+      </div>
+    </div>
+
+    <!-- CASUAL -->
+    <div class="card">
+      <div class="tile">
+        <div class="t-checkbox"></div>
+        <div class="t-botbar"></div>
+        <div class="t-casual"><div class="name">Jordan</div><div class="tag">Casual Guest</div></div>
+        <div class="t-shield">
+          <svg viewBox="0 0 48 50"><path d="M24 2 L44 9 L44 24 C44 36 35 43 24 47 C13 43 4 36 4 24 L4 9 Z" fill="none" stroke="#9aa3af" stroke-width="2"/><path d="M16 24 l6 6 l11 -12" fill="none" stroke="#c3ccd7" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </div>
+      </div>
+      <div class="card__meta">
+        <div class="card__name">Casual tag <span class="sev sev--info">neutral</span></div>
+        <span class="card__cls">.rcz-casual</span>
+        <p class="card__desc">Calm <b style="color:#565d66">grey</b> tag, no red, no lock — the “nothing to worry about” treatment for non-members.</p>
+      </div>
+    </div>
+
+  </div>
+
+  <h2>Colour &amp; weight legend</h2>
+  <p class="sechint">The literal values in use, so a new control lands in the existing language rather than introducing a new one.</p>
+  <div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(210px,1fr))">
+    <div class="card"><div class="card__meta">
+      <div class="card__name" style="color:#e5231b">Alert red</div><span class="card__cls">#e5231b</span>
+      <p class="card__desc">All warnings, mismatches, locked-shield prompts.</p></div></div>
+    <div class="card"><div class="card__meta">
+      <div class="card__name" style="color:#2f6fed">Action blue</div><span class="card__cls">#2f6fed</span>
+      <p class="card__desc">Every tappable link / button (add photo, add ticket).</p></div></div>
+    <div class="card"><div class="card__meta">
+      <div class="card__name" style="color:#16a34a">Success green</div><span class="card__cls">#16a34a</span>
+      <p class="card__desc">Checked-in shield only. Not yet used for any prompt.</p></div></div>
+    <div class="card"><div class="card__meta">
+      <div class="card__name" style="color:#111827">Ink / outline</div><span class="card__cls">#111827</span>
+      <p class="card__desc">Button borders, dismiss ✕, mismatch labels.</p></div></div>
+  </div>
+
+  <h2>Built <span class="n">— family name-duplicate override (v5.168)</span></h2>
+  <p class="sechint">The chosen direction: for a <b>family</b> membership where the booker’s name is stamped on multiple tickets (so a child ticket mismatches its own pass), the hard mismatch is replaced by this softer nudge — the add-photo box format with a one-tap override. Genuine cross-account mismatches keep the hard lock (card 4).</p>
+  <div class="grid">
+
+    <!-- BUILT: family-dup nudge -->
+    <div class="card">
+      <div class="tile">
+        <div class="t-checkbox"></div>
+        <div class="t-status">
+          <div class="main">
+            <div class="row"><span class="lbl">Name:</span><span class="warn">Family name duplicate</span></div>
+            <div class="row"><span class="lbl">Photo:</span><span>Showing</span><span class="tick">✓</span></div>
+          </div>
+          <div class="time"><b>9:30 am</b></div>
+        </div>
+        <div class="t-actreq" style="bottom:76px">
+          <div class="hd">FRAUD WARNING: NAME</div>
+          <div class="sub">FAMILY NAME DUPLICATE</div>
+          <div class="links"><span class="lk">PASS DUPLICATE</span></div>
+        </div>
+        <div class="t-botbar"></div>
+        <div class="t-namelbl">Ellie</div>
+        <div class="t-shield t-locked">
+          <svg viewBox="0 0 48 50"><path d="M24 2 L44 9 L44 24 C44 36 35 43 24 47 C13 43 4 36 4 24 L4 9 Z" fill="none" stroke="#9aa3af" stroke-width="2"/><path d="M16 24 l6 6 l11 -12" fill="none" stroke="#c3ccd7" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </div>
+      </div>
+      <div class="card__meta">
+        <div class="card__name">The nudge <span class="sev sev--action">override</span></div>
+        <span class="card__cls">.rcz-actreq (act=passdup)</span>
+        <p class="card__desc">Same frosted format as the add-photo error — <b>no red wash</b>. Shield stays locked until staff tap <b style="color:#2f6fed">PASS DUPLICATE</b>.</p>
+      </div>
+    </div>
+
+    <!-- BUILT: after override -->
+    <div class="card">
+      <div class="tile">
+        <div class="t-checkbox"></div>
+        <div class="t-status">
+          <div class="main">
+            <div class="row"><span class="lbl">Name:</span><span class="warn">Family name duplicate</span></div>
+            <div class="row"><span class="lbl">Photo:</span><span>Showing</span><span class="tick">✓</span></div>
+          </div>
+          <div class="time"><b>9:30 am</b></div>
+        </div>
+        <div class="t-botbar"></div>
+        <div class="t-namelbl">Ellie</div>
+        <div class="t-shield">
+          <svg viewBox="0 0 48 50"><path d="M24 2 L44 9 L44 24 C44 36 35 43 24 47 C13 43 4 36 4 24 L4 9 Z" fill="none" stroke="#2f6fed" stroke-width="2"/><path d="M16 24 l6 6 l11 -12" fill="none" stroke="#2f6fed" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </div>
+      </div>
+      <div class="card__meta">
+        <div class="card__name">After PASS DUPLICATE <span class="sev sev--info">2-min window</span></div>
+        <span class="card__cls">snoozeName + audit email</span>
+        <p class="card__desc">Warning clears, <b>shield unlocks for 2 minutes</b> (then re-appears if not checked in), and an <b>audit email</b> logs the override — ticket name vs pass name, operator, location, booking.</p>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="callout">
+    <p><b>Live in v5.168</b>, behind the <span style="font-family:ui-monospace,monospace">FAMILY_DUP_NUDGE</span> flag. Only the family duplicate-name case gets this softer treatment; a genuinely different membership or a unique wrong name still shows the hard <b>ADD A TICKET</b> lock (card 4).</p>
+    <p>The override email reads with proper labels once the updated <b>Code.gs</b> is in place — <b>Name on ticket</b> / <b>Name on pass</b> instead of Old/New name.</p>
+  </div>
+
+  <footer>Swatches reproduce the userscript’s live values (v5.168). Reference only — the live behaviour ships in the userscript.</footer>
+</div>
