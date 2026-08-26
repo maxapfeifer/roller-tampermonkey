@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Venue — ROLLER Check-in Cards + Member Photos
 // @namespace    venue.roller.checkin-cards
-// @version      5.193
+// @version      5.194
 // @description  Reformats the ROLLER POS booking check-in list into full-frame photo cards, surfaces member photos on load (no Verify click), alerts when a member has no photo, handles family memberships (best-effort photos + add-name prompt) and close/similar name matches.
 // @match        https://pos.roller.app/*
 // @match        https://*.roller.app/*
@@ -61,6 +61,9 @@
     WATCHDOG_EVERY_MS: 60000,   // how often to run the checks (1 min)
     WATCHDOG_STREAK: 3,         // must be broken this many consecutive runs before reporting (rides out page-load transients)
     WATCHDOG_MIN_HOURS: 24,     // per machine, report each check+version at most once in this many hours (anti-spam)
+    NET_HEALTH: true,           // NETWORK-OUTCOME monitor: alert when OUR ROLLER API calls (get-membership, booking) start failing — catches data/auth breaks a DOM check can't see (would have caught the RDS get-membership 400)
+    NET_HEALTH_STREAK: 3,       // consecutive failures of one endpoint before alerting (rides out one-off blips)
+    WATCH_ROLLER_VERSION: true, // ROLLER build-version tripwire: ROLLER sends X-Version on its requests; when it changes, alert proactively ("ROLLER updated -> re-verify tweaks") before a break is even noticed
     // ---- AUDIT: notify the admin when staff take certain actions (reuses the watchdog email endpoint) ----
     // NOTE: unlike the watchdog (which sends NO guest data), audit emails deliberately include the member's
     // old + new NAME — that is the point of the audit. They go only to the admin inbox behind AUDIT_URL.
@@ -277,6 +280,7 @@
       Object.keys(headers || {}).forEach(function (k) {
         if (AUTH_RE.test(k)) picked[k] = headers[k];
         if (k.toLowerCase() === 'current-venue' && headers[k]) rczCaptureVenue(headers[k]);  // this till's venue id (for audit Location)
+        if (k.toLowerCase() === 'x-version' && headers[k]) rczCheckRollerVersion(headers[k]);  // ROLLER build-version tripwire
       });
       if (Object.keys(picked).length) state.authByOrigin[origin] = picked;
     } catch (e) {}
@@ -503,12 +507,16 @@
     state.bookingId = urlId;
     var headers = Object.assign({ 'Content-Type': 'application/json' }, auth);
     oFetch('https://api.roller.app/api/bookings/' + urlId + '?includeBookingMeta=true', { credentials: 'include', headers: headers })
-      .then(function (res) { return res.ok ? res.json().catch(function () { return null; }) : null; })
+      .then(function (res) {
+        if (res.ok) { rczNet('booking-fetch', true); return res.json().catch(function () { return null; }); }
+        try { res.clone().text().then(function (b) { rczNet('booking-fetch', false, res.status, b); }).catch(function () { rczNet('booking-fetch', false, res.status, ''); }); } catch (e) { rczNet('booking-fetch', false, res.status, ''); }
+        return null;
+      })
       .then(function (j) {
         state.selfFetching = false;
         if (j && j.bipDetail) { state.booking = j; processBooking(); }
       })
-      .catch(function () { state.selfFetching = false; });
+      .catch(function (err) { state.selfFetching = false; rczNet('booking-fetch', false, 0, String((err && err.message) || err)); });
   }
 
   function processBooking() {
@@ -837,14 +845,19 @@
     window.fetch(CFG.GET_MEMBERSHIP, {
       method: 'POST', credentials: 'include', headers: headers,
       body: JSON.stringify({ receiptNumber: t.r, bookingItemPartId: t.b })
-    }).then(function (res) { return res.ok ? res.json().catch(function () { return null; }) : undefined; })
+    }).then(function (res) {
+        if (res.ok) { rczNet('get-membership', true); return res.json().catch(function () { return null; }); }
+        // failure -> record it (with status + body snippet) so the health monitor can alert if it persists
+        try { res.clone().text().then(function (b) { rczNet('get-membership', false, res.status, b); }).catch(function () { rczNet('get-membership', false, res.status, ''); }); } catch (e) { rczNet('get-membership', false, res.status, ''); }
+        return undefined;
+      })
       .then(function (gm) {
         if (gm === undefined) return; // request failed -> stay pending (Verify-click fallback can still resolve)
         var e = state.byCard[t.cardId] || {};
         e.member = true; e.pending = false; e.photo = (gm && gm.imageFileName) || null; // null gm (e.g. visiting member) = no photo
         state.byCard[t.cardId] = e;
         render();
-      }).catch(function () {});
+      }).catch(function (err) { rczNet('get-membership', false, 0, String((err && err.message) || err)); });
   }
 
   function resolveFromMemberPart(memberPartId, imageFileName) {
@@ -3298,6 +3311,36 @@
     }
     try { localStorage.setItem(key, String(Date.now())); } catch (e) {}
   }
+  // NETWORK-OUTCOME monitor (#1): the DOM watchdog can't see a data/auth break — it watches anchors, not results.
+  // This watches OUR ROLLER API calls: on repeated non-2xx for one endpoint, email the endpoint + status + a
+  // response snippet (e.g. "get-membership 400: A valid X-BrowserId header is required") — an actionable alert that
+  // would have caught last night's regression in the first hour, instead of a silent "all anchors present".
+  function rczNet(key, ok, status, body) {
+    if (!CFG.NET_HEALTH) return;
+    try {
+      if (!state.netFail) state.netFail = {};
+      if (ok) { state.netFail[key] = 0; return; }
+      state.netFail[key] = (state.netFail[key] || 0) + 1;
+      var snip = String(body || '').replace(/\s+/g, ' ').trim().slice(0, 160);
+      rczLogHealth({ net: key, status: status, why: snip, version: SCRIPT_VERSION, date: new Date().toISOString() });
+      if (state.netFail[key] >= (CFG.NET_HEALTH_STREAK || 3)) {
+        rczReport({ id: 'net-' + key, why: 'HEALTH: ' + key + ' calls FAILING (HTTP ' + status + '): ' + (snip || '(no body)') + ' — a ROLLER change likely broke this endpoint or its required headers.' });
+        state.netFail[key] = 0;  // reset; rczReport's own 24h dedup prevents spam
+      }
+    } catch (e) {}
+  }
+  // ROLLER build-version tripwire (#3): ROLLER stamps X-Version on its own requests. When that build id changes,
+  // proactively email "ROLLER UPDATED -> re-verify tweaks" BEFORE a break is necessarily noticed. Called from
+  // stashAuth as we capture request headers. First sighting just records the baseline (no alert).
+  function rczCheckRollerVersion(v) {
+    if (!CFG.WATCH_ROLLER_VERSION) return;
+    try {
+      v = String(v || '').trim(); if (!v) return;
+      var prev = localStorage.getItem('rcz-roller-version') || '';
+      if (prev && prev !== v) rczReport({ id: 'roller-version-' + v, why: 'ROLLER UPDATED: build ' + prev + ' -> ' + v + '. Re-verify the userscript tweaks — this is exactly the kind of update that has broken things before.' });
+      if (prev !== v) localStorage.setItem('rcz-roller-version', v);
+    } catch (e) {}
+  }
   var rczStreak = {};
   function runWatchdog() {
     if (!CFG.WATCHDOG) return;
@@ -3333,6 +3376,14 @@
       try { localStorage.setItem('rcz-location', String(name).trim()); } catch (e) {}
       console.log('[rcz] this till is now tagged: "' + rczLocation() + '"');
       return rczLocation();
+    };
+    // Health-monitor state: current ROLLER build version we've seen, and any endpoints currently failing.
+    window.rczNetStatus = function () {
+      var v = ''; try { v = localStorage.getItem('rcz-roller-version') || '(none seen yet)'; } catch (e) {}
+      var fails = (state.netFail || {});
+      console.log('[rcz] ROLLER build (X-Version) seen: ' + v);
+      console.log('[rcz] endpoint failure streaks:', fails);
+      return { rollerVersion: v, endpointFailStreaks: fails };
     };
   } catch (e) {}
 
