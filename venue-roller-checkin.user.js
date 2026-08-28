@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Venue — ROLLER Check-in Cards + Member Photos
 // @namespace    venue.roller.checkin-cards
-// @version      5.196
+// @version      5.198
 // @description  Reformats the ROLLER POS booking check-in list into full-frame photo cards, surfaces member photos on load (no Verify click), alerts when a member has no photo, handles family memberships (best-effort photos + add-name prompt) and close/similar name matches.
 // @match        https://pos.roller.app/*
 // @match        https://*.roller.app/*
@@ -72,6 +72,8 @@
     AUDIT_PHOTO_OVERRIDE: true, // email the admin when an EXISTING member photo is replaced (overridden), with the old + new photo attached. A first photo being ADDED is not reported.
     PHOTO_MAX_PX:    560,        // resize the captured new photo to this max dimension before emailing (keeps the payload small/reliable)
     AUDIT_URL: '',             // Google Apps Script webhook for audit emails; '' = reuse WATCHDOG_URL. Requires the Apps Script to handle {kind:'audit'} payloads.
+    COMPETITOR_URL: 'https://script.google.com/macros/s/AKfycbyxAzme9u1v0Q8nx585z4fbvhkyRYFoUfOyZNHRNtTFwreJ5ZWZDMtzDVo_kUvO6eSl/exec', // GAS web app URL receiving Roller competitor session data; '' = disabled
+    COMPETITOR_EVERY_MS: 1800000, // collect competitor data every 30 min
     // Family name-DUPLICATE nudge (soft alternative to the hard cross-account mismatch): shown when a FAMILY
     // membership's holder name is stamped on 2+ tickets in the booking. Frosted box (add-photo format) with a
     // one-tap override that unlocks the shield for 2 min and emails the admin. Genuine cross-account mismatches
@@ -254,6 +256,23 @@
   /* ======================================================================
      STATE
      ====================================================================== */
+  var ROLLER_COMPETITOR_VENUES = [
+    { venueName: 'Imagination Chadstone',     checkoutKey: 'chadstone',       productId: '936702',  slug: 'imaginationation',     defaultCapacity: 200 },
+    { venueName: 'MoPA Geelong',              checkoutKey: 'playgeelong',     productId: '760263',  slug: 'mopa',                 defaultCapacity: 120 },
+    { venueName: 'MoPA Sandringham',          checkoutKey: 'playmelbourne',   productId: '760252',  slug: 'mopasandringham',      defaultCapacity: 120 },
+    { venueName: 'MoPA Thomastown',           checkoutKey: 'play',            productId: '760722',  slug: 'mopathomastown',       defaultCapacity: 120 },
+    { venueName: 'MoPA Nunawading',           checkoutKey: 'playnunawading',  productId: '882957',  slug: 'mopanunawading',       defaultCapacity: 120 },
+    { venueName: 'Funtopia Carrum Downs',     checkoutKey: 'funtopia' + 'world' + 'carrum' + 'downs' + 'checkout', productId: '501958',  slug: 'funtopiacarrumdowns',  defaultCapacity: 160 },
+    { venueName: 'Funtopia Cranbourne',       checkoutKey: 'mini' + 'funtopia' + 'cranbourne' + 'checkout',        productId: '1048804', slug: 'funtopiacranbourne',   defaultCapacity: 200 },
+    { venueName: 'Funtopia Prospect',         checkoutKey: 'funtopia2025',    productId: '462202',  slug: 'funtopiaprospect',     defaultCapacity: 200 },
+    { venueName: 'Rush HQ Melbourne',         checkoutKey: 'myvenue',         productId: '677045',  slug: 'rushhqau',             defaultCapacity: 200 },
+    { venueName: 'Twisted Science Melbourne', checkoutKey: 'moorabbintickets',productId: '679308',  slug: 'twistedscience',       defaultCapacity: 300 },
+    { venueName: 'AFL Max Melbourne',         checkoutKey: 'aflmaxcheckout',  productId: '884166',  slug: 'aflmaxmelbourne',      defaultCapacity: 200 },
+    { venueName: 'AFL Max Adelaide',          checkoutKey: 'aflmaxcheckout',  productId: '953671',  slug: 'aflmax',               defaultCapacity: 200 },
+    { venueName: 'Hoopla South Morang',       checkoutKey: 'onlinecheckout',  productId: '1013783', slug: 'hooplasouthmorang',    defaultCapacity: 220 },
+    { venueName: 'SuperPark Highpoint',       checkoutKey: 'highpointcheckout', productId: null,    slug: 'superparkhighpoint',   defaultCapacity: null }
+  ];
+
   var state = {
     authByOrigin: {},   // origin -> {header:value}  (borrowed from ROLLER's own calls)
     booking:      null, // last booking payload seen
@@ -3415,6 +3434,68 @@
     };
   } catch (e) {}
 
+  function runRollerCompetitor() {
+    if (!CFG.COMPETITOR_URL) return;
+    var lastRun = 0;
+    try { lastRun = parseInt(localStorage.getItem('rcz-competitor-last') || '0', 10); } catch (e) {}
+    var now = Date.now();
+    if (now - lastRun < CFG.COMPETITOR_EVERY_MS) return;
+    try { localStorage.setItem('rcz-competitor-last', String(now)); } catch (e) {}
+
+    var today = new Date();
+    var dd = today.getDate(), mm = today.getMonth() + 1, yyyy = today.getFullYear();
+    var dateStr = yyyy + '-' + String(mm).padStart(2, '0') + '-' + String(dd).padStart(2, '0');
+    var collectedTime = String(today.getHours()).padStart(2, '0') + ':' + String(today.getMinutes()).padStart(2, '0');
+
+    Promise.all(ROLLER_COMPETITOR_VENUES.map(function (v) {
+      return fetch('https://api.roller.app/api/checkout/' + v.checkoutKey + '/product-availability?date=' + dateStr, {
+        headers: {
+          'X-Api-Key': v.slug,
+          'X-Cell-Id': 'b',
+          'X-Origin-Id': '1',
+          'X-Checkout-Slug': v.checkoutKey,
+          'Origin': 'https://ecom.roller.app',
+          'Referer': 'https://ecom.roller.app/'
+        },
+        credentials: 'omit'
+      }).then(function (resp) {
+        if (!resp.ok) return { v: v, status: resp.status, data: null };
+        return resp.json().then(function (data) { return { v: v, status: resp.status, data: data }; });
+      }).catch(function (e) { return { v: v, status: 0, data: null, err: e.message }; });
+    })).then(function (results) {
+      var rows = [];
+      results.forEach(function (r) {
+        var v = r.v;
+        var base = [dd, mm, yyyy, v.venueName, 'Roller'];
+        var tail = [dd, mm, yyyy, collectedTime];
+        if (!r.data || !Array.isArray(r.data)) {
+          rows.push(base.concat(['', '', '', '', '', '', r.err ? 'ERROR: ' + r.err : 'HTTP ' + r.status]).concat(tail));
+          return;
+        }
+        var prod = v.productId ? r.data.find(function (p) { return p.id === v.productId || p.parentProductId === v.productId; }) : null;
+        if (!prod) prod = r.data.find(function (p) { return p.type === 'sessionpass' && p.sessions && p.sessions.length; });
+        if (!prod || !prod.sessions || !prod.sessions.length) {
+          rows.push(base.concat(['', '', '', '', '', '', 'NO_SESSIONS']).concat(tail));
+          return;
+        }
+        prod.sessions.forEach(function (s) {
+          var cap = (s.allocations && s.allocations[0] && s.allocations[0].locations && s.allocations[0].locations[0])
+            ? s.allocations[0].locations[0].capacity
+            : (v.defaultCapacity || 0);
+          var remaining = (s.allocations && s.allocations[0]) ? s.allocations[0].capacityRemaining : (s.capacityRemaining || 0);
+          var sold = cap - remaining;
+          var pct = cap > 0 ? sold / cap : 0;
+          rows.push(base.concat([s.startTime, s.endTime, cap, sold, remaining, pct, 'OK']).concat(tail));
+        });
+      });
+      if (!rows.length || !CFG.COMPETITOR_URL) return;
+      var body = JSON.stringify({ kind: 'roller-competitor', rows: rows });
+      var sent = false;
+      try { sent = navigator.sendBeacon(CFG.COMPETITOR_URL, body); } catch (e) {}
+      if (!sent) { try { fetch(CFG.COMPETITOR_URL, { method: 'POST', mode: 'no-cors', keepalive: true, body: body }); } catch (e) {} }
+    });
+  }
+
   function boot() {
     injectGlobalStyle();
     injectStyle();
@@ -3437,6 +3518,7 @@
     if ((CFG.DASHBOARD_GUESTS_MINUS_MEMBERSHIPS || CFG.DASHBOARD_HIDE_FINANCIALS) && location.hostname === 'manage.roller.app') setInterval(adjustGuestsBooked, 1500);
     // Watchdog: run the health checks on a timer (first run delayed so page-load transients settle).
     if (CFG.WATCHDOG) setInterval(runWatchdog, CFG.WATCHDOG_EVERY_MS);
+    if (CFG.COMPETITOR_URL) setInterval(runRollerCompetitor, CFG.COMPETITOR_EVERY_MS);
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
   else boot();
