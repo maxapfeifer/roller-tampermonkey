@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Venue — ROLLER Check-in Cards + Member Photos
 // @namespace    venue.roller.checkin-cards
-// @version      5.199
+// @version      5.200
 // @description  Reformats the ROLLER POS booking check-in list into full-frame photo cards, surfaces member photos on load (no Verify click), alerts when a member has no photo, handles family memberships (best-effort photos + add-name prompt) and close/similar name matches.
 // @match        https://pos.roller.app/*
 // @match        https://*.roller.app/*
@@ -3489,6 +3489,28 @@
           rows.push(base.concat([s.startTime, s.endTime, cap, sold, remaining, pct, 'OK']).concat(tail));
         });
       });
+      // Track consecutive runs where every venue returned an HTTP error (403, 0, etc.)
+      // After 3 in a row (~90 min), send a watchdog alert email via the Watchdog GAS.
+      var httpErrCount = results.filter(function(r) { return !r.data && (r.status >= 400 || r.status === 0); }).length;
+      var errStreak = 0;
+      try { errStreak = parseInt(localStorage.getItem('rcz-competitor-err-streak') || '0', 10); } catch (e) {}
+      if (httpErrCount > 0 && httpErrCount === results.length) {
+        errStreak++;
+        try { localStorage.setItem('rcz-competitor-err-streak', String(errStreak)); } catch (e) {}
+        if (errStreak === 3 && CFG.COMPETITOR_URL) {
+          var alertPayload = JSON.stringify({
+            check: 'Competitor data — Roller API unreachable',
+            why: 'All ' + results.length + ' competitor venues returned HTTP ' + (results[0] && results[0].status || 'error') + ' for 3 consecutive collection runs (~90 min). Browser-based Roller data collection has stalled.',
+            machine: location.hostname,
+            path: 'runRollerCompetitor',
+            date: new Date().toISOString()
+          });
+          try { fetch(CFG.COMPETITOR_URL, { method: 'POST', mode: 'no-cors', keepalive: true, body: alertPayload }); } catch (e) {}
+        }
+      } else if (errStreak > 0) {
+        try { localStorage.setItem('rcz-competitor-err-streak', '0'); } catch (e) {}
+      }
+
       if (!rows.length || !CFG.COMPETITOR_URL) return;
       var body = JSON.stringify({ kind: 'roller-competitor', rows: rows });
       var sent = false;
