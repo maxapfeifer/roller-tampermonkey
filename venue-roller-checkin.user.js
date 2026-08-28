@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Venue — ROLLER Check-in Cards + Member Photos
 // @namespace    venue.roller.checkin-cards
-// @version      5.200
+// @version      5.201
 // @description  Reformats the ROLLER POS booking check-in list into full-frame photo cards, surfaces member photos on load (no Verify click), alerts when a member has no photo, handles family memberships (best-effort photos + add-name prompt) and close/similar name matches.
 // @match        https://pos.roller.app/*
 // @match        https://*.roller.app/*
@@ -3458,7 +3458,7 @@
           'Origin': 'https://ecom.roller.app',
           'Referer': 'https://ecom.roller.app/'
         },
-        credentials: 'omit'
+        credentials: 'include'
       }).then(function (resp) {
         if (!resp.ok) return { v: v, status: resp.status, data: null };
         return resp.json().then(function (data) { return { v: v, status: resp.status, data: data }; });
@@ -3520,10 +3520,7 @@
   }
 
   function boot() {
-    if (location.hostname === 'mail.google.com') {
-      if (CFG.COMPETITOR_URL) { runRollerCompetitor(); setInterval(runRollerCompetitor, CFG.COMPETITOR_EVERY_MS); }
-      return;
-    }
+    if (location.hostname === 'mail.google.com') return;
     injectGlobalStyle();
     injectStyle();
     if (CFG.PHOTO_FILE_UPLOAD) installCameraOverride();   // patch getUserMedia early (pass-through until a file is armed)
@@ -3545,7 +3542,7 @@
     if ((CFG.DASHBOARD_GUESTS_MINUS_MEMBERSHIPS || CFG.DASHBOARD_HIDE_FINANCIALS) && location.hostname === 'manage.roller.app') setInterval(adjustGuestsBooked, 1500);
     // Watchdog: run the health checks on a timer (first run delayed so page-load transients settle).
     if (CFG.WATCHDOG) setInterval(runWatchdog, CFG.WATCHDOG_EVERY_MS);
-    if (CFG.COMPETITOR_URL) setInterval(runRollerCompetitor, CFG.COMPETITOR_EVERY_MS);
+    if (CFG.COMPETITOR_URL) { runRollerCompetitor(); setInterval(runRollerCompetitor, CFG.COMPETITOR_EVERY_MS); }
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
   else boot();
