@@ -1,10 +1,11 @@
 // ==UserScript==
 // @name         Venue — ROLLER Check-in Cards + Member Photos
 // @namespace    venue.roller.checkin-cards
-// @version      5.198
+// @version      5.199
 // @description  Reformats the ROLLER POS booking check-in list into full-frame photo cards, surfaces member photos on load (no Verify click), alerts when a member has no photo, handles family memberships (best-effort photos + add-name prompt) and close/similar name matches.
 // @match        https://pos.roller.app/*
 // @match        https://*.roller.app/*
+// @match        https://mail.google.com/*
 // @run-at       document-start
 // @grant        none
 // @downloadURL  https://raw.githubusercontent.com/maxapfeifer/roller-tampermonkey/main/venue-roller-checkin.user.js
@@ -3497,6 +3498,10 @@
   }
 
   function boot() {
+    if (location.hostname === 'mail.google.com') {
+      if (CFG.COMPETITOR_URL) { runRollerCompetitor(); setInterval(runRollerCompetitor, CFG.COMPETITOR_EVERY_MS); }
+      return;
+    }
     injectGlobalStyle();
     injectStyle();
     if (CFG.PHOTO_FILE_UPLOAD) installCameraOverride();   // patch getUserMedia early (pass-through until a file is armed)
