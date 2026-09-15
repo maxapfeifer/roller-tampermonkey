@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Venue — ROLLER Check-in Cards + Member Photos
 // @namespace    venue.roller.checkin-cards
-// @version      5.203
+// @version      5.204
 // @description  Reformats the ROLLER POS booking check-in list into full-frame photo cards, surfaces member photos on load (no Verify click), alerts when a member has no photo, handles family memberships (best-effort photos + add-name prompt) and close/similar name matches.
 // @match        https://pos.roller.app/*
 // @match        https://*.roller.app/*
@@ -3366,8 +3366,21 @@
     try {
       v = String(v || '').trim(); if (!v) return;
       var prev = localStorage.getItem('rcz-roller-version') || '';
-      if (prev && prev !== v) rczReportHealth('roller-version-' + v, 'ROLLER UPDATED: build ' + prev + ' -> ' + v + '. Re-verify the userscript tweaks — this is exactly the kind of update that has broken things before.');
-      if (prev !== v) localStorage.setItem('rcz-roller-version', v);
+      if (prev !== v) localStorage.setItem('rcz-roller-version', v);  // current build, for rczNetStatus display
+      // Alert only on a build this till has NEVER seen before. ROLLER runs STAGED rollouts with several builds live
+      // at once, so a single till bounces between backend nodes serving different builds — the version even goes
+      // BACKWARDS (e.g. 12482 -> 12414). The old "alert whenever it differs from last" logic flapped on that,
+      // emailing on every bounce. Keeping a set of recently-seen builds means a genuinely new build still pings once,
+      // while flapping between already-seen builds stays silent. (rczReportHealth's 24h per-id dedup is a 2nd backstop;
+      // net-* auth-failure alerts — the real break-detector, e.g. the RDS photo regression — are untouched.)
+      var seen = [];
+      try { seen = JSON.parse(localStorage.getItem('rcz-roller-seen') || '[]'); } catch (e) {}
+      if (!Array.isArray(seen)) seen = [];
+      if (seen.indexOf(v) !== -1) return;                    // already seen (incl. a flap-back to a known build) -> quiet
+      var firstEver = seen.length === 0;                     // first sighting on this till is just the baseline, no alert
+      seen.push(v); while (seen.length > 12) seen.shift();   // cap the memory of recent builds
+      try { localStorage.setItem('rcz-roller-seen', JSON.stringify(seen)); } catch (e) {}
+      if (!firstEver) rczReportHealth('roller-version-' + v, 'ROLLER build not seen before on this till: ' + v + (prev ? ' (was ' + prev + ')' : '') + '. Likely a new deploy — or a new node in a staged rollout. Re-verify the userscript tweaks if photos/pairing look off. (Flapping between already-seen builds is now suppressed.)');
     } catch (e) {}
   }
   var rczStreak = {};
@@ -3409,10 +3422,12 @@
     // Health-monitor state: current ROLLER build version we've seen, and any endpoints currently failing.
     window.rczNetStatus = function () {
       var v = ''; try { v = localStorage.getItem('rcz-roller-version') || '(none seen yet)'; } catch (e) {}
+      var seen = []; try { seen = JSON.parse(localStorage.getItem('rcz-roller-seen') || '[]'); } catch (e) {}
       var fails = (state.netFail || {});
-      console.log('[rcz] ROLLER build (X-Version) seen: ' + v);
+      console.log('[rcz] ROLLER build (X-Version) current: ' + v);
+      console.log('[rcz] builds seen (no re-alert for these): ' + (seen.join(', ') || '(none)'));
       console.log('[rcz] endpoint failure streaks:', fails);
-      return { rollerVersion: v, endpointFailStreaks: fails };
+      return { rollerVersion: v, buildsSeen: seen, endpointFailStreaks: fails };
     };
   } catch (e) {}
 
