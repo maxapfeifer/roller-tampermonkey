@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Venue — ROLLER Check-in Cards + Member Photos
 // @namespace    venue.roller.checkin-cards
-// @version      5.204
+// @version      5.205
 // @description  Reformats the ROLLER POS booking check-in list into full-frame photo cards, surfaces member photos on load (no Verify click), alerts when a member has no photo, handles family memberships (best-effort photos + add-name prompt) and close/similar name matches.
 // @match        https://pos.roller.app/*
 // @match        https://*.roller.app/*
@@ -615,10 +615,23 @@
         var d = discs.find(function (x) { return !x.used && x.name && !x.unnamed && x.name === firstName(p.name); });
         if (d) { d.used = true; assign[p.bookingItemPartId] = d; }
       });
-      // Pass 2b: leftovers (their amount matched no slot) take any remaining discount, in order.
-      memberTickets.forEach(function (p) {
-        if (assign[p.bookingItemPartId]) return;
-        var d = discs.find(function (x) { return !x.used; });
+      // Pass 2b: leftovers — pair remaining tickets to remaining discounts by TIER RANK, not raw array order.
+      // ROLLER records NO member->ticket link (a discount carries only memberName + amount + the membership slot),
+      // so which member sits on which ticket is always inferred. On some products the ticket's bookingItemDiscount
+      // is on a DIFFERENT scale from the membership's discount amount — e.g. family booking 110428891: 3 child
+      // tickets carry bookingItemDiscount 60 + 2 adult tickets carry 24, while the child memberships are −$20 and
+      // the adult ones −$12 — so Pass A's exact-amount match finds nothing and (with blank ticket names) every
+      // ticket used to fall to a raw array-order leftover, which dropped the $20 CHILD members (Jane, Nadia) onto
+      // the ADULT tickets. Both measures rise with the ticket's price tier, so sorting the leftover tickets by
+      // bookingItemDiscount and the leftover discounts by amount (both ascending) and pairing by rank keeps child
+      // members on child tickets and adult on adult. (Within one tier the specific member<->ticket is genuinely
+      // interchangeable — ROLLER doesn't track it either, so tier-correctness is the most we can guarantee.)
+      var leftTix = memberTickets.filter(function (p) { return !assign[p.bookingItemPartId]; })
+        .sort(function (a, b) { return Number(a.bookingItemDiscount) - Number(b.bookingItemDiscount); });
+      var leftDisc = discs.filter(function (x) { return !x.used; })
+        .sort(function (a, b) { return (a.amount == null ? Infinity : Number(a.amount)) - (b.amount == null ? Infinity : Number(b.amount)); });
+      leftTix.forEach(function (p, i) {
+        var d = leftDisc[i];
         if (d) { d.used = true; assign[p.bookingItemPartId] = d; }
       });
       bip.forEach(function (p) {
