@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Venue — ROLLER Check-in Cards + Member Photos
 // @namespace    venue.roller.checkin-cards
-// @version      5.205
+// @version      5.206
 // @description  Reformats the ROLLER POS booking check-in list into full-frame photo cards, surfaces member photos on load (no Verify click), alerts when a member has no photo, handles family memberships (best-effort photos + add-name prompt) and close/similar name matches.
 // @match        https://pos.roller.app/*
 // @match        https://*.roller.app/*
@@ -926,7 +926,7 @@
   // "Membership" ($14 Adult Membership, Venue: Annual Membership) — a ticket has neither.
   function isMembershipCard(host) {
     try {
-      var pills = host.querySelectorAll('.ui-pill');
+      var pills = host.querySelectorAll('.ui-pill, .rds-pill');
       for (var i = 0; i < pills.length; i++) {
         if (/\b(current|expired|cancell?ed|suspended|pending|lapsed)\b/i.test(pills[i].textContent || '')) return true;
       }
@@ -1061,9 +1061,10 @@
       'body.rcz-hidecheckinbtn .bip-list-header__actions app-generic-button:has(button.mat-mdc-unelevated-button){display:none !important;}',
       'body.rcz-hidecheckinbtn .bip-list-header__actions button.mat-mdc-unelevated-button{display:none !important;}',
       // Grey section-header pills at ~2x (12px->24px text, 2px 8px->4px 16px padding). Tagged .rcz-sectionpill
-      // in retextSectionPills (neutral pills not inside a card). In-card "Current" status pills are untouched.
-      '.rcz-sectionpill.ui-pill{padding:4px 16px !important;border-radius:999px !important;}',
-      '.rcz-sectionpill .ui-pill__text{font-size:24px !important;line-height:1.15 !important;}',
+      // in retextSectionPills (pills not inside a card). In-card "Current" status pills are untouched.
+      // ROLLER renamed its pill classes ui-pill -> rds-pill (the "rds" design system); style either.
+      '.rcz-sectionpill.ui-pill,.rcz-sectionpill.rds-pill{padding:4px 16px !important;border-radius:999px !important;}',
+      '.rcz-sectionpill .ui-pill__text,.rcz-sectionpill .rds-pill__text{font-size:24px !important;line-height:1.15 !important;}',
       // Smaller second line under "Membership profiles below" — sentence case (no uppercase), lighter, its own line.
       '.rcz-sectionpill .rcz-pill-sub{display:block;font-size:14px !important;font-weight:400 !important;line-height:1.25 !important;text-transform:none !important;opacity:.9;margin-top:1px;}',
       /* check-in button: 66px square sized to the name-label height; glyph scaled to match. Full box
@@ -3117,24 +3118,28 @@
   }
   // Relabel ROLLER's grey section-header pills (e.g. "OPEN ITEMS" -> "MEMBERSHIP PROFILES ONLY", "TODAY" ->
   // "TICKETS BOOKED FOR TODAY"). Matched by the native text on the pill span, re-applied on render since ROLLER
-  // re-renders them; the pill's own CSS uppercases the result. The "TODAY" swap is scoped to the grey
-  // (color--neutral) section pill so the green "Today" status badge next to VALID is left alone.
+  // re-renders them; the pill's own CSS uppercases the result.
+  // ROLLER's late-2026 build (the "rds" design system) renamed the pill text span span.ui-pill__text ->
+  // span.rds-pill__text and dropped the colour-modifier class (color--neutral) we previously used to tell a grey
+  // SECTION pill from the green "Today" status badge. So we now identify a section header STRUCTURALLY: a pill span
+  // that lives in the main tickets panel (.panel__main-inner) and is NOT inside an app-bip-summary card. That keeps
+  // the left-pane "Today" status badge next to VALID untouched (it sits outside .panel__main-inner) and no longer
+  // depends on a class name ROLLER might rename again. Match either class so the tweak works on old or new builds.
   function retextSectionPills() {
-    var els = document.querySelectorAll('span.ui-pill__text');
+    var main = document.querySelector('.panel__main-inner') || document;
+    var els = main.querySelectorAll('span.rds-pill__text, span.ui-pill__text');
     for (var i = 0; i < els.length; i++) {
       var s = els[i], t = s.textContent || '', pill = s.parentElement;
+      if (!pill || (s.closest && s.closest('app-bip-summary'))) continue;   // in-card status pill ("Current"), not a section header
       // NB: the "OPEN ITEMS" -> "Membership profiles below" relabel is NOT done here — it must only apply when the
       // section actually holds membership profiles (an OPEN ITEMS section can be gift-cards/add-ons only). That
       // decision needs .rcz-mem (set later by markSkips), so it lives in tagProfileOnlyCards via setOpenItemsLabel().
-      if (CFG.TODAY_LABEL && /^\s*today\s*$/i.test(t) && t !== CFG.TODAY_LABEL && pill && /color--neutral/.test(pill.className || '')) s.textContent = CFG.TODAY_LABEL;
-      // Date section header (e.g. "11 May 2026") -> "TICKETS BOOKED FOR 11 May 2026". Grey neutral pill not in a
-      // card; idempotent (skip if already prefixed). CSS uppercases it for display.
-      if (CFG.DATE_PREFIX && pill && /color--neutral/.test(pill.className || '') && !(s.closest && s.closest('app-bip-summary')) && /^\d{1,2}\s+[A-Za-z]{3,}\s+\d{4}$/.test(t.trim()) && t.indexOf(CFG.DATE_PREFIX) !== 0) s.textContent = CFG.DATE_PREFIX + t.trim();
-      // Enlarge the grey SECTION-HEADER pills (neutral, not inside a card): "MEMBERSHIP PROFILES ONLY",
-      // "TICKETS BOOKED FOR TODAY", date headers. Skip in-card status pills ("Current") — those stay small.
-      if (CFG.BIG_SECTION_PILLS && pill && /color--neutral/.test(pill.className || '') && !(s.closest && s.closest('app-bip-summary'))) {
-        pill.classList.add('rcz-sectionpill');
-      }
+      if (CFG.TODAY_LABEL && /^\s*today\s*$/i.test(t) && t !== CFG.TODAY_LABEL) s.textContent = CFG.TODAY_LABEL;
+      // Date section header (e.g. "11 May 2026") -> "TICKETS BOOKED FOR 11 May 2026"; idempotent (skip if already
+      // prefixed). CSS uppercases it for display.
+      if (CFG.DATE_PREFIX && /^\d{1,2}\s+[A-Za-z]{3,}\s+\d{4}$/.test(t.trim()) && t.indexOf(CFG.DATE_PREFIX) !== 0) s.textContent = CFG.DATE_PREFIX + t.trim();
+      // Enlarge the SECTION-HEADER pills: "MEMBERSHIP PROFILES ONLY", "TICKETS BOOKED FOR TODAY", date headers.
+      if (CFG.BIG_SECTION_PILLS) pill.classList.add('rcz-sectionpill');
     }
   }
   // Hide the check-in tick on membership tiles that sit under the "MEMBERSHIP PROFILES ONLY" (ROLLER's OPEN
@@ -3178,7 +3183,7 @@
       openPill = null; openCards = []; openHasMember = false;
     }
     while ((node = walker.nextNode())) {
-      if (node.matches('span.ui-pill__text') && !(node.closest && node.closest('app-bip-summary'))) {
+      if (node.matches('span.rds-pill__text, span.ui-pill__text') && !(node.closest && node.closest('app-bip-summary'))) {
         finalize();   // a new section header closes the previous one
         var raw = (node.textContent || '').trim();
         var isOpen = /open items/i.test(raw) || (CFG.OPEN_ITEMS_LABEL && raw.indexOf(CFG.OPEN_ITEMS_LABEL) === 0) || !!(node.querySelector && node.querySelector('.rcz-pill-sub'));
@@ -3221,7 +3226,7 @@
       if (!badge) {
         badge = document.createElement('span');
         badge.className = 'ui-pill rcz-searchtype';
-        var pills = row.querySelectorAll('.ui-pill:not(.rcz-searchtype)');
+        var pills = row.querySelectorAll('.ui-pill:not(.rcz-searchtype), .rds-pill:not(.rcz-searchtype)');
         var anchor = pills.length ? pills[pills.length - 1] : null;   // sit just after the VALID/EXPIRED status pill
         if (anchor && anchor.parentElement) anchor.parentElement.insertBefore(badge, anchor.nextSibling);
         else (row.querySelector('.booking-search-result__data') || row).appendChild(badge);
@@ -3281,7 +3286,7 @@
     { id: 'pos-tiles',           why: 'Full-frame photo tiles hook <app-bip-summary>; renamed = no tiles render.',                     applies: function () { return activeRoute() && !!document.querySelector('app-card'); }, ok: function () { return !!document.querySelector('app-bip-summary'); } },
     { id: 'pos-checkin-btn',     why: 'Shield styling, tick-hiding and the Undo flow target button[id^="check-in-button"].',           applies: function () { return activeRoute() && rczCheckinExpected(); },        ok: function () { return !!document.querySelector('button[id^="check-in-button"]'); } },
     { id: 'pos-details-btn',     why: 'Photo / age / casual overlays target button[id^="booking-details-button-"].',                  applies: function () { return activeRoute() && !!document.querySelector('app-bip-summary'); },        ok: function () { return !!document.querySelector('button[id^="booking-details-button-"]'); } },
-    { id: 'pos-section-pills',   why: 'Section relabels + enlargement target span.ui-pill__text.',                                     applies: function () { return activeRoute() && !!document.querySelector('app-card'); }, ok: function () { return !!document.querySelector('span.ui-pill__text'); } },
+    { id: 'pos-section-pills',   why: 'Section relabels + enlargement target span.rds-pill__text (ROLLER renamed it from ui-pill__text).', applies: function () { return activeRoute() && !!document.querySelector('app-card'); }, ok: function () { return !!document.querySelector('span.rds-pill__text, span.ui-pill__text'); } },
     // NB: on a booking/membership DETAIL page the current booking renders as an <app-booking-search-result> HEADER
     // with NO clickable anchor — that's not a results list to badge, so skip detail routes (else it false-fires).
     { id: 'search-rows',         why: 'Search MEMBERSHIP/TICKETS/OTHER badges read the receipt from a[id^="booking-search-result-"] OR the #booking-search-id .selectable fallback (tagSearchRows uses both).', applies: function () { return /^\/search\/bookings\/?$/.test(location.pathname) && !!document.querySelector('app-booking-search-result'); }, ok: function () { return !!document.querySelector('a[id^="booking-search-result-"], #booking-search-id .selectable'); } },
